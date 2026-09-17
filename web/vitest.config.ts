@@ -45,6 +45,7 @@ export default defineConfig({
         "src/lib/endpoint-reach.ts",
         "src/lib/templates.ts",
         "src/components/templates/template-gallery.tsx",
+        "src/lib/budget-status.ts",
         // The server-side trust boundary: which paths, headers and bodies reach the API, which
         // requests count as same-origin, the session cookie's flags and lifetime, which credential
         // each mode presents, and the SSE relay. A wrong branch in any of these is silent.
@@ -61,6 +62,10 @@ export default defineConfig({
         // Which ids may become an API path, and where sign-in may send you: both silent when wrong.
         "src/lib/api-paths.ts",
         "src/lib/next-path.ts",
+        // Which controls a member is offered. Not a boundary — the API decides — but a wrong
+        // branch here offers a guest a button that 403s, or hides one an admin needs, and both
+        // read as the product being broken.
+        "src/lib/tiers.ts",
       ],
       thresholds: { lines: 90, functions: 90, branches: 85, statements: 90 },
     },

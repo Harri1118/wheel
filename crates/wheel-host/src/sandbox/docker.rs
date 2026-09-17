@@ -118,16 +118,20 @@ impl DockerSandbox {
         let host_config = bollard::models::HostConfig {
             // Least privilege. A tenant's agents run arbitrary code by design, so the container is
             // treated as hostile: hard resource caps so one project cannot starve the machine every
-            // other tenant shares, and every capability dropped except the two below.
+            // other tenant shares, and every capability dropped, NONE added back.
+            //
+            // F007 (per-node uid isolation, docs/proposals/script-execution-scope.md) is NOT YET
+            // IMPLEMENTED: `child_command` (wheel-engine/src/supervisor/mod.rs) clears a child's
+            // environment but never calls setuid/setgid or `pre_exec` anywhere in the engine, so
+            // every child on a project still runs as the container's own uid. An earlier version of
+            // this comment claimed the engine "drops each child to its own per-node uid" and granted
+            // CAP_SETUID/CAP_SETGID on that basis — false, and the grant was accordingly unused
+            // capability surface on a container that treats its own tenant as hostile. Tracked M2:
+            // add the grant back IN THE SAME COMMIT that lands the setuid/setgid calls, not before.
             cap_drop: Some(vec!["ALL".into()]),
-            // ADVERSARY ruling F007: the engine drops each child to its own per-node uid, which
-            // needs exactly these two and nothing else. Granting CAP_SETUID/CAP_SETGID rather than
-            // running the engine as unconstrained root is the whole point of the finding — the
-            // engine can change a child's uid and can do nothing else privileged.
-            cap_add: Some(vec!["SETUID".into(), "SETGID".into()]),
-            // Compatible with the above: no_new_privs blocks privilege *gain* through execve
-            // (setuid bits, file capabilities); it does not revoke a capability the process
-            // already holds, so per-child setuid still works.
+            // Compatible with the (currently empty) capability set above: no_new_privs blocks
+            // privilege *gain* through execve (setuid bits, file capabilities) regardless of what,
+            // if anything, is granted.
             security_opt: Some(vec!["no-new-privileges".into()]),
             memory: Some(self.cfg.memory_bytes),
             nano_cpus: Some(self.cfg.nano_cpus),
@@ -310,18 +314,17 @@ impl Sandbox for DockerSandbox {
 mod tests {
     use super::*;
 
-    /// Review round 2, finding 2: Docker's own default stop timeout (10s) is shorter than an
-    /// engine's own ~25s shutdown budget (2s HTTP drain + up to 20s draining turns + 3s SIGTERM
-    /// grace for its agents), so leaving it at the default would SIGKILL the container mid-drain.
-    #[test]
-    #[allow(clippy::assertions_on_constants)]
-    fn the_engine_stop_grace_covers_its_own_shutdown_budget() {
-        assert!(
-            ENGINE_STOP_GRACE_SECS >= 30,
-            "ENGINE_STOP_GRACE_SECS is {ENGINE_STOP_GRACE_SECS}s, which is not enough room for a \
-             ~25s engine shutdown to finish before being SIGKILLed"
-        );
-    }
+    // Review round 2, finding 2: Docker's own default stop timeout (10s) is shorter than an
+    // engine's own ~25s shutdown budget (2s HTTP drain + up to 20s draining turns + 3s SIGTERM
+    // grace for its agents), so leaving it at the default would SIGKILL the container mid-drain.
+    //
+    // This used to be covered here by a unit test that asserted only on the
+    // `ENGINE_STOP_GRACE_SECS` constant, which stayed green even after a reviewer reverted the
+    // `t:` passed to `stop_container` back to a shorter, hardcoded number — the constant was still
+    // correct, it just was not the number `stop()` used. `stop_asks_the_daemon_for_the_full_engine_
+    // shutdown_grace` in `tests/sandbox_docker_fake.rs` now asserts the value that actually reaches
+    // the daemon on the wire, which a bare unit test in this module cannot: `stop()` talks to a
+    // real (or faked) docker daemon over HTTP, not to anything this file can call directly.
 
     fn docker_404() -> bollard::errors::Error {
         bollard::errors::Error::DockerResponseServerError {

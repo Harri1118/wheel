@@ -44,6 +44,26 @@ pub struct Config {
     /// all here, and a knob a project's own owner could set would not be a
     /// policy. `wheeld`/`wheel-host` are the only things that set this.
     pub harness_auth: HarnessAuthPolicy,
+    /// `docs/proposals/script-execution-scope.md`'s acceptance gate, restated
+    /// here as code: PM's ruling is that per-node uid isolation (F007) is a
+    /// PRECONDITION of turning script execution ON, not later hardening,
+    /// because every child on a project shares one uid today — a script can
+    /// read every sibling node's token file and reach whatever the host's
+    /// network can reach, unfiltered (no SSRF policy governs a script the way
+    /// `validate.rs::host_is_denied` governs a tool/mcp URL). The runtime
+    /// itself may be built and tested regardless (`WHEEL_SCRIPT_EXEC=1`
+    /// flips this in a test's own environment); production defaults OFF
+    /// until F007 and ADVERSARY's egress PoC both close. See [`ENV_SCRIPT_EXEC`].
+    pub script_execution_enabled: bool,
+    /// Off by default (Morgan's explicit ask, after PR #103): ingress's
+    /// `resolve_secret` failure-mode logging (which of six operator-error
+    /// causes stopped an `auth:bearer` endpoint from authenticating) is
+    /// diagnostic detail an operator opts into while debugging a specific
+    /// endpoint, not a standing log line on every deployment. Still never
+    /// covers a WRONG presented credential either way -- that branch stays
+    /// silent regardless of this flag, unchanged from #103 (ADVERSARY 031,
+    /// no oracle). See [`ENV_LOG_MODE`].
+    pub ingress_diagnostic_logging: bool,
 }
 
 /// `WHEEL_HARNESS_AUTH`'s two values (wheel-harness-auth.md's "Design" §
@@ -84,6 +104,14 @@ pub const ENV_TOOL_ALLOW_HOST: &str = "WHEEL_TOOL_ALLOW_HOST";
 
 /// `prod` here makes the allowlist a boot failure rather than a warning.
 pub const ENV_ENV: &str = "WHEEL_ENV";
+
+/// Opts this engine into running `script` nodes at all. See
+/// [`Config::script_execution_enabled`] for why the default is off.
+pub const ENV_SCRIPT_EXEC: &str = "WHEEL_SCRIPT_EXEC";
+
+/// Set to `diagnostic` to turn on ingress's operator-error logging (PR #103).
+/// See [`Config::ingress_diagnostic_logging`].
+pub const ENV_LOG_MODE: &str = "WHEEL_LOG_MODE";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -169,6 +197,12 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_STARTUP_DEADLINE_SECS),
             harness_auth: harness_auth()?,
+            script_execution_enabled: std::env::var(ENV_SCRIPT_EXEC)
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+            ingress_diagnostic_logging: std::env::var(ENV_LOG_MODE)
+                .map(|v| v == "diagnostic")
+                .unwrap_or(false),
         })
     }
 
@@ -482,6 +516,42 @@ mod tests {
                 );
             },
         );
+    }
+
+    /// Morgan's explicit ask, after PR #103 shipped: the diagnostic logging
+    /// it added is opt-in, off by default, so it must not turn on from
+    /// anything except the documented value.
+    #[test]
+    fn ingress_diagnostic_logging_is_off_unless_explicitly_set_to_diagnostic() {
+        for (value, want) in [
+            (None, false),
+            (Some("diagnostic"), true),
+            (Some("Diagnostic"), false), // exact match only, no case-folding
+            (Some("1"), false),
+            (Some("true"), false),
+            (Some(""), false),
+        ] {
+            with_env(
+                &[
+                    (ENV_PROJECT_ID, Some("2b1f6b0e-6b0a-4c1a-9c1a-000000000000")),
+                    (ENV_ENGINE_SECRET, Some("at-least-sixteen-characters")),
+                    (ENV_VAULT_KEY, None),
+                    (ENV_LISTEN, None),
+                    (ENV_DATA_DIR, None),
+                    (ENV_LOG, None),
+                    (ENV_TOOL_ALLOW_HOST, None),
+                    (ENV_ENV, None),
+                    (ENV_LOG_MODE, value),
+                ],
+                || {
+                    let cfg = Config::from_env().expect("a fully-specified env must configure");
+                    assert_eq!(
+                        cfg.ingress_diagnostic_logging, want,
+                        "{ENV_LOG_MODE}={value:?} should give ingress_diagnostic_logging={want}"
+                    );
+                },
+            );
+        }
     }
 
     /// Unset (or blank) is `oauth-token` -- today's unrestricted behaviour --
