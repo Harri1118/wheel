@@ -29,6 +29,9 @@ const FEATURES: &[&str] = &[
     "credential_fallback",
     "await_reply",
     "oauth_paste_code",
+    // The Workflow Builder conversation route, so a client can tell a build that has it from
+    // one that does not before offering the panel at all.
+    "builder",
     "oauth_refresh",
     "interrupt",
     "script_run",
@@ -214,6 +217,7 @@ mod tests {
                 "credential_fallback",
                 "await_reply",
                 "oauth_paste_code",
+                "builder",
                 "oauth_refresh",
                 "interrupt",
                 "script_run",
@@ -341,6 +345,12 @@ mod tests {
             "quota_parking" => AgentStatus,
             "credential_fallback" => CredentialFallback,
             "await_reply" => Routes(&[("GET", "/v1/cli/sent")]),
+            "builder" => Routes(&[
+                ("POST", "/v1/builder/turns"),
+                ("GET", "/v1/builder/credential"),
+                ("PUT", "/v1/builder/credential"),
+                ("DELETE", "/v1/builder/credential"),
+            ]),
             "oauth_paste_code" => Routes(&[
                 ("POST", "/v1/agents/{id}/auth/begin"),
                 ("POST", "/v1/agents/{id}/auth/complete"),

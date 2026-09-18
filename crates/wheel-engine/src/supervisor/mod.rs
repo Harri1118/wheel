@@ -5829,6 +5829,7 @@ done
             events: sup.events().clone(),
             ingress_rate: Arc::new(crate::api::ingress::RateLimiter::default()),
             logins: Arc::new(crate::oauth::LoginSessions::default()),
+            builder: Arc::new(crate::builder::Builder::default()),
             update: None,
         };
 
