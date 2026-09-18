@@ -182,6 +182,7 @@ a `400`, not an ignored key: check `features` first.
 | `ephemeral_context` | `AgentConfig.ephemeral_context` |
 | `budgets` | `AgentConfig.budget` `{max_turns?, max_usd?}` |
 | `oauth_paste_code` | `POST /v1/agents/:id/auth/begin` answering `paste_code`, then `POST /v1/agents/:id/auth/complete`. Headless by construction: the engine never opens a browser, the client shows the URL and posts the code back. **Absent on a `WHEEL_HARNESS_AUTH=api-key-only` deployment**, where both routes answer `403 policy_denied` |
+| `builder` | `POST /v1/builder/turns` (the Workflow Builder conversation, Server-Sent Events) and `GET`/`PUT`/`DELETE /v1/builder/credential` |
 | `oauth_refresh` | The engine RENEWS a vault-held claude.ai login before it expires, so an 8-hour token does not become an 8-hour board. `GET /v1/agents/:id/auth` reports `refreshable: true`, the `expires_at` of the current token, and a `warning` when the last renewal failed. **Absent on `api-key-only`** |
 | `interrupt` | `POST /v1/agents/:id/interrupt` exists on this build |
 | `script_run` | `POST /v1/scripts/:id/run` exists on this build. **The route existing is not the same as a call succeeding**: it answers `503 config` on any deployment that has not proven per-node uid isolation (F007) — see § "Script nodes". This id promises the route, not that a call will run anything |
@@ -191,6 +192,33 @@ a `400`, not an ignored key: check `features` first.
 
 Each id is held to its row by a test that calls the routes or creates an agent carrying the field
 (`crates/wheel-engine/src/api/engine_routes.rs`). Advertising an id with nothing behind it fails the suite.
+
+### Workflow Builder
+
+| Route | Body → Response | M |
+|---|---|---|
+| `POST /v1/builder/turns` | `{mode, turns[], credential?}` → `text/event-stream` | M1 |
+| `GET /v1/builder/credential` | → `{configured, kind}` | M1 |
+| `PUT /v1/builder/credential` | `{api_key}` or `{setup_token}` → `{configured, kind}` | M1 |
+| `DELETE /v1/builder/credential` | → `204` | M1 |
+
+One transient `claude --print` per turn, holding no tools, no MCP and no node token, so its only
+output is text (`docs/proposals/workflow-builder-completion.md`). `mode` is `new` or `improve`; in
+`improve` the engine attaches **its own** board, redacted (mcp `env` values, imported tool specs,
+agent runtime state), never a board supplied by the caller. `turns` is the conversation, last turn
+the user's; at most 40 turns, 16 KiB each, 128 KiB in total.
+
+`credential` chooses which of the project's own credentials the turn runs on — `{"source":"builder"}`
+(the store above), `{"source":"agent","node":<uuid>}`, or `{"source":"vault","node":<uuid>}`. Exactly
+one credential variable ever reaches the child, and a `WHEEL_HARNESS_AUTH=api-key-only` deployment
+refuses an OAuth-shaped one at both the store and the spawn.
+
+Frames: `delta {text}` as the answer streams, then either `done {text, boards}` — `boards` counts
+`---START-WORKFLOW---` markers, so a client can tell when the contract's "exactly one board" was not
+met — or `error {code, message}` with `code` one of `needs_auth`, `builder_error`, `timeout`,
+`too_long`. Refusals *before* the stream opens are ordinary JSON: `409 needs_auth` (carrying
+`sources`, the agents and vaults that could be designated instead), `403 policy`, `429 builder_busy`,
+`400`, `413`. One turn at a time per project.
 
 ### Board
 
@@ -280,6 +308,16 @@ POST   /v1/cli/tool   {node, op, args, curl?} → the call result, or the masked
 GET    /v1/cli/mcp/tools                   → {tools} the MCP tool list for this node
 GET    /v1/cli/secret?addr=<vault>/<key>   → {node, key, value}   wire-gated, agents
 GET    /v1/cli/secret/keys?node=<vault>    → {node, keys}         wire-gated, agents
+GET    /v1/cli/update                      → {update: UpdateNotice?}   what this deployment's updater would say
+                                              right now (docs/proposals/auto-update.md); 403 update_disabled if
+                                              WHEEL_AUTO_UPDATE is off
+POST   /v1/cli/update                      → 202 {requested, already_requested, update} accepted/already queued;
+                                              200 {requested: false, reason} nothing pertinent to update;
+                                              409 update_refused if suspended (circuit breaker) or otherwise
+                                              blocked; 403 update_denied for a non-agent caller (an endpoint can
+                                              start a script, so a request from one would hand the internet a
+                                              restart lever) — always targets the CI-green tip of main, never a
+                                              caller-chosen ref
 ```
 
 Values are encrypted at rest with AES-256-GCM under the project's `WHEEL_VAULT_KEY`, and each

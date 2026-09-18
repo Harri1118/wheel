@@ -19,6 +19,7 @@
 pub mod engine;
 pub mod event;
 pub mod host;
+pub mod identity_mask;
 pub mod message;
 pub mod name;
 pub mod node;
@@ -28,6 +29,7 @@ pub mod spawn;
 pub mod state;
 pub mod timestamp;
 pub mod tool;
+pub mod update;
 pub mod validate;
 pub mod wire;
 
@@ -37,6 +39,7 @@ pub use host::{
     Capabilities, ErrorBody, ErrorDetail, HostHealth, SandboxBackend, SandboxInfo, SandboxStatus,
     SandboxUpsert, UidIsolation, ENV_ALLOW_SHARED_UID, SHARED_UID_WARNING,
 };
+pub use identity_mask::mask_identifier;
 pub use message::{
     escape_envelope_body, escape_tool_output_marker, map_json_strings, map_json_strings_and_keys,
     sha256_hex, wrap_tool_output, Message, MessageReceipt, MessageSender, MessageState,
@@ -63,6 +66,7 @@ pub use tool::{
     embedded_ipv4, host_is_denied, ip_is_denied, Fill, FillMode, ParamLocation, ToolConfig,
     ToolFormat, ToolKind, ToolMethod, ToolOperation, ToolParam, ToolSource,
 };
+pub use update::{BlockReason, Component, Sha, UpdateNotice, UpdateState, UPDATE_HEADER};
 pub use validate::{
     normalize_chest_key, url_host, url_host_port, validate_config, validate_config_with,
     validate_endpoint_path, ConfigError,
