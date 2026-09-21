@@ -73,15 +73,6 @@
           "description": "Create a new node on the connected Wheel board"
         }
       ],
-      "statusBarItems": [
-        {
-          "id": "wheel.connection",
-          "text": "Wheel",
-          "tooltip": "Wheel connection status",
-          "alignment": "right",
-          "priority": 300
-        }
-      ],
       "toolHandlers": [
         {
           "name": "wheel_list_projects",
