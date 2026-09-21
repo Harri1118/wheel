@@ -4,6 +4,10 @@
   "publisher": "wheel",
   "displayName": "Wheel",
   "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
+  "main": "entry.js",
+  "engines": {
+    "agentgrid": ">=2.0.0"
+  },
   "permissions": ["agent:tools", "secrets", "network", "ui:panel", "ui:slots", "canvas:spawn", "canvas:read", "canvas:events"],
   "networkAccess": {
     "external": ["https://*.wheel.dev", "http://127.0.0.1:*", "http://localhost:*"]

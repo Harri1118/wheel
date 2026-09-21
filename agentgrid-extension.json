@@ -4,6 +4,10 @@
   "publisher": "wheel",
   "displayName": "Wheel",
   "description": "Orchestrate AI agent boards on Wheel \u2014 create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
+  "main": "extension/entry.js",
+  "engines": {
+    "agentgrid": ">=2.0.0"
+  },
   "permissions": [
     "agent:tools",
     "secrets",
