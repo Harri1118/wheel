@@ -64,6 +64,23 @@
           "position": "bottom"
         }
       ],
+      "configuration": [
+        {
+          "title": "Wheel",
+          "properties": {
+            "wheel.apiUrl": {
+              "type": "string",
+              "default": "https://api.wheel.dev",
+              "description": "Wheel API URL (e.g. https://api.wheel.dev or http://127.0.0.1:8787)"
+            },
+            "wheel.apiToken": {
+              "type": "string",
+              "default": "",
+              "description": "Wheel API token (wht_...)"
+            }
+          }
+        }
+      ],
       "spawnMenuItems": [
         {
           "id": "wheel.addNode",
