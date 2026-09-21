@@ -157,13 +157,15 @@ async function initExplorer() {
     const url = secrets.apiUrl
     const token = secrets.apiToken
 
-    if (!url) {
+    const effectiveUrl = url || 'https://wheel-api-production-28d3.up.railway.app'
+
+    if (!token) {
       $notConfigured.hidden = false
       $configured.hidden = true
       return
     }
 
-    explorerApi = new WheelApi(url, token || '')
+    explorerApi = new WheelApi(effectiveUrl, token)
     $notConfigured.hidden = true
     $configured.hidden = false
 

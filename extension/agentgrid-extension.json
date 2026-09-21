@@ -10,7 +10,7 @@
   },
   "permissions": ["agent:tools", "secrets", "network", "ui:panel", "ui:slots", "canvas:spawn", "canvas:read", "canvas:events"],
   "networkAccess": {
-    "hosts": ["https://*.wheel.dev", "http://127.0.0.1:*", "http://localhost:*"]
+    "hosts": ["https://*.wheel.dev", "https://*.up.railway.app", "http://127.0.0.1:*", "http://localhost:*"]
   },
   "contributes": {
     "capabilities": {
@@ -20,14 +20,6 @@
       ]
     },
     "ui": {
-      "paneTypes": [
-        {
-          "id": "runtime",
-          "title": "Wheel",
-          "entrypoint": "panel/index.html",
-          "defaultSize": { "width": 360, "height": 280 }
-        }
-      ],
       "explorerSections": [
         {
           "id": "wheel-projects",
@@ -42,13 +34,11 @@
           "position": "bottom"
         }
       ],
-      "spawnMenuItems": [
+      "settingsPanels": [
         {
-          "id": "wheel.addNode",
-          "label": "Add Wheel Node",
-          "icon": "plus-circle",
-          "category": "tools",
-          "description": "Create a new node on the connected Wheel board"
+          "id": "settings",
+          "title": "Wheel",
+          "entrypoint": "panel/settings.html"
         }
       ],
       "toolHandlers": [
