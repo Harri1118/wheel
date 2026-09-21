@@ -9,16 +9,29 @@
 <body>
   <div id="root">
     <div id="setup" class="view" hidden>
-      <h2>Configure Wheel</h2>
+      <h2>Sign in to Wheel</h2>
       <label>
         API URL
         <input id="input-url" type="url" placeholder="https://api.wheel.dev" />
       </label>
       <label>
-        API Token
-        <input id="input-token" type="password" placeholder="wht_..." />
+        Email
+        <input id="input-email" type="email" placeholder="you@example.com" />
       </label>
-      <button id="btn-save">Save</button>
+      <label>
+        Password
+        <input id="input-password" type="password" placeholder="Password" />
+      </label>
+      <button id="btn-signin">Sign in</button>
+      <div id="setup-divider" class="divider"><span>or</span></div>
+      <button id="btn-toggle-token" class="link">Use an API token instead</button>
+      <div id="token-section" hidden>
+        <label>
+          API Token
+          <input id="input-token" type="password" placeholder="wht_..." />
+        </label>
+        <button id="btn-save-token">Connect</button>
+      </div>
       <p id="setup-error" class="error" hidden></p>
     </div>
 

@@ -57,6 +57,32 @@ button:hover { background: #3a3a3a; }
 
 .error { color: #e55; font-size: 12px; }
 
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #555;
+  font-size: 11px;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #333;
+}
+
+#token-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .header {
   display: flex;
   align-items: center;

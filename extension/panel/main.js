@@ -515,7 +515,10 @@ const $apiUrlDisplay = document.getElementById('api-url-display')
 const $projectCount = document.getElementById('project-count')
 const $setupError = document.getElementById('setup-error')
 const $inputUrl = document.getElementById('input-url')
+const $inputEmail = document.getElementById('input-email')
+const $inputPassword = document.getElementById('input-password')
 const $inputToken = document.getElementById('input-token')
+const $tokenSection = document.getElementById('token-section')
 const $projectsSection = document.getElementById('projects-section')
 const $projectList = document.getElementById('project-list')
 const $syncStatus = document.getElementById('sync-status')
@@ -523,11 +526,14 @@ const $syncDot = document.getElementById('sync-dot')
 const $syncLabel = document.getElementById('sync-label')
 const $syncDetail = document.getElementById('sync-detail')
 
-function showSetup(urlVal, tokenVal) {
+function showSetup(urlVal) {
   $setup.hidden = false
   $status.hidden = true
   $inputUrl.value = urlVal || ''
-  $inputToken.value = tokenVal || ''
+  $inputEmail.value = ''
+  $inputPassword.value = ''
+  $inputToken.value = ''
+  $tokenSection.hidden = true
   $setupError.hidden = true
 }
 
@@ -636,14 +642,13 @@ function updatePeerCount(count) {
   $syncDetail.textContent = `${nodeCount} node${nodeCount === 1 ? '' : 's'} on canvas${peerText}`
 }
 
-document.getElementById('btn-save').addEventListener('click', async () => {
+function validateUrl() {
   const url = $inputUrl.value.trim()
-  const token = $inputToken.value.trim()
 
   if (!url) {
     $setupError.textContent = 'API URL is required'
     $setupError.hidden = false
-    return
+    return null
   }
 
   try {
@@ -651,10 +656,58 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   } catch {
     $setupError.textContent = 'Invalid URL'
     $setupError.hidden = false
-    return
+    return null
   }
 
   $setupError.hidden = true
+  return url
+}
+
+document.getElementById('btn-signin').addEventListener('click', async () => {
+  const url = validateUrl()
+  if (!url) return
+
+  const email = $inputEmail.value.trim()
+  const password = $inputPassword.value
+
+  if (!email || !password) {
+    $setupError.textContent = 'Email and password are required'
+    $setupError.hidden = false
+    return
+  }
+
+  const btn = document.getElementById('btn-signin')
+  btn.disabled = true
+  btn.textContent = 'Signing in...'
+  $setupError.hidden = true
+
+  try {
+    const tempApi = new WheelApi(url, '')
+    const session = await tempApi.login(email, password)
+    const created = await tempApi.createToken(session.token, 'AgentGrid')
+
+    await saveSecret('apiUrl', url)
+    await saveSecret('apiToken', created.token)
+    api = new WheelApi(url, created.token)
+    await showStatus()
+  } catch (err) {
+    $setupError.textContent = err.message
+    $setupError.hidden = false
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Sign in'
+  }
+})
+
+document.getElementById('btn-toggle-token').addEventListener('click', () => {
+  $tokenSection.hidden = !$tokenSection.hidden
+})
+
+document.getElementById('btn-save-token').addEventListener('click', async () => {
+  const url = validateUrl()
+  if (!url) return
+
+  const token = $inputToken.value.trim()
 
   try {
     await saveSecret('apiUrl', url)
@@ -668,7 +721,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 })
 
 document.getElementById('btn-configure').addEventListener('click', () => {
-  showSetup(api?.apiUrl || '', api?.apiToken || '')
+  showSetup(api?.apiUrl || '')
 })
 
 // -- init --
@@ -695,10 +748,10 @@ async function init() {
         updateSyncStatus()
       }
     } else {
-      showSetup('', '')
+      showSetup('')
     }
   } catch {
-    showSetup('', '')
+    showSetup('')
   }
 }
 

@@ -38,6 +38,49 @@ class WheelApi {
     return `/v1/projects/${encodeURIComponent(projectId)}/engine/v1/${segments.map(encodeURIComponent).join('/')}`
   }
 
+  // -- auth --
+
+  async login(email, password) {
+    const res = await fetch(`${this.apiUrl}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`
+      try {
+        const body = await res.json()
+        if (body?.error?.message) msg = body.error.message
+      } catch { /* keep default */ }
+      throw new Error(msg)
+    }
+
+    return res.json()
+  }
+
+  async createToken(sessionToken, name) {
+    const res = await fetch(`${this.apiUrl}/v1/auth/tokens`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-auth-token': sessionToken,
+      },
+      body: JSON.stringify({ name }),
+    })
+
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`
+      try {
+        const body = await res.json()
+        if (body?.error?.message) msg = body.error.message
+      } catch { /* keep default */ }
+      throw new Error(msg)
+    }
+
+    return res.json()
+  }
+
   // -- projects --
 
   listProjects() {
