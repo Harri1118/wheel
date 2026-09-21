@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wheel Inspector</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .inspector-empty {
+      color: #666;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .node-type-badge {
+      background: #2a2a3a;
+      color: #8888cc;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .node-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ddd;
+    }
+
+    .section {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #2a2a2a;
+    }
+
+    .wire-list {
+      list-style: none;
+      margin-top: 4px;
+    }
+
+    .wire-list li {
+      padding: 3px 0;
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .wire-dir { color: #888; font-size: 11px; }
+    .wire-type-read { color: #6a6; }
+    .wire-type-write { color: #a66; }
+    .wire-type-send { color: #66a; }
+
+    .config-key {
+      color: #888;
+      font-size: 11px;
+    }
+    .config-value {
+      color: #ccc;
+      font-size: 12px;
+      margin-left: 8px;
+      word-break: break-all;
+    }
+
+    .config-item {
+      padding: 2px 0;
+    }
+
+    .agent-status {
+      font-size: 12px;
+      color: #999;
+    }
+    .agent-status.status-running { color: #5a5; }
+    .agent-status.status-idle { color: #888; }
+    .agent-status.status-error { color: #e55; }
+
+    .agent-log {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 4px;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 3px;
+      padding: 4px;
+    }
+
+    .log-line {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 10px;
+      color: #999;
+      padding: 1px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-line.log-stderr {
+      color: #c66;
+    }
+  </style>
+</head>
+<body>
+  <div id="inspector-root">
+    <div id="inspector-empty" class="inspector-empty">
+      No Wheel node selected. Open a project on the canvas to inspect nodes.
+    </div>
+    <div id="inspector-content" hidden></div>
+  </div>
+  <script src="wheel-api.js"></script>
+  <script src="spawn-plan.js"></script>
+  <script src="wheel-events.js"></script>
+  <script src="board-sync.js"></script>
+  <script src="inspector.js"></script>
+</body>
+</html>

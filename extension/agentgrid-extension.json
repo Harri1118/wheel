@@ -1,0 +1,393 @@
+{
+  "id": "wheel",
+  "version": "0.1.0",
+  "publisher": "wheel",
+  "displayName": "Wheel",
+  "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
+  "permissions": ["agent:tools", "secrets", "network", "ui:panel", "ui:slots", "canvas:spawn", "canvas:read", "canvas:events"],
+  "networkAccess": {
+    "external": ["https://*.wheel.dev", "http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "contributes": {
+    "capabilities": {
+      "secrets": [
+        { "key": "apiUrl", "label": "Wheel API URL (e.g. https://api.wheel.dev or http://127.0.0.1:8787)" },
+        { "key": "apiToken", "label": "Wheel API token (wht_...)" }
+      ]
+    },
+    "ui": {
+      "paneTypes": [
+        {
+          "id": "runtime",
+          "title": "Wheel",
+          "entrypoint": "panel/index.html",
+          "defaultSize": { "width": 360, "height": 280 }
+        }
+      ],
+      "explorerSections": [
+        {
+          "id": "wheel-projects",
+          "title": "Wheel Projects",
+          "entrypoint": "panel/explorer.html",
+          "position": "bottom"
+        },
+        {
+          "id": "wheel-inspector",
+          "title": "Wheel Inspector",
+          "entrypoint": "panel/inspector.html",
+          "position": "bottom"
+        }
+      ],
+      "spawnMenuItems": [
+        {
+          "id": "wheel.addNode",
+          "label": "Add Wheel Node",
+          "icon": "plus-circle",
+          "category": "tools",
+          "description": "Create a new node on the connected Wheel board"
+        }
+      ],
+      "statusBarItems": [
+        {
+          "id": "wheel.connection",
+          "text": "Wheel",
+          "tooltip": "Wheel connection status",
+          "alignment": "right",
+          "priority": 300
+        }
+      ],
+      "toolHandlers": [
+        {
+          "name": "wheel_list_projects",
+          "description": "List all Wheel projects the authenticated user can see.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        },
+        {
+          "name": "wheel_get_project",
+          "description": "Get a Wheel project's metadata (name, status, capabilities).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string", "description": "Project UUID" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_create_project",
+          "description": "Create a new Wheel project.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Project name" }
+            },
+            "required": ["name"]
+          }
+        },
+        {
+          "name": "wheel_start_project",
+          "description": "Start a stopped Wheel project's container.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string", "description": "Project UUID" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_stop_project",
+          "description": "Stop a running Wheel project's container.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string", "description": "Project UUID" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_get_board",
+          "description": "Get the full board (all nodes with state + wires) for a Wheel project. The project must be running.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string", "description": "Project UUID" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_create_node",
+          "description": "Create a node on the board. Types: agent, ctx, table, endpoint, script, mcp, vault, chest, tool. Names must match [a-z0-9][a-z0-9-_]{0,62}.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "name": { "type": "string", "description": "Node name (lowercase alphanumeric, dashes, underscores)" },
+              "type": {
+                "type": "string",
+                "enum": ["agent", "ctx", "table", "endpoint", "script", "mcp", "vault", "chest", "tool"]
+              },
+              "position": {
+                "type": "object",
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                "required": ["x", "y"]
+              },
+              "config": {
+                "type": "object",
+                "description": "Node-type-specific config. Omit to use defaults."
+              }
+            },
+            "required": ["projectId", "name", "type", "position"]
+          }
+        },
+        {
+          "name": "wheel_patch_node",
+          "description": "Update a node's name, position, or config.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Node UUID" },
+              "name": { "type": "string" },
+              "position": {
+                "type": "object",
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+              },
+              "config": { "type": "object" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_delete_node",
+          "description": "Delete a node from the board. Deleting a table/chest/vault also drops its data.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_create_wire",
+          "description": "Wire two nodes together. Types: read, write, send. Not all pairs are legal — the engine enforces the wire matrix (e.g. agent→table supports read/write, ctx→agent supports send).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "from": { "type": "string", "description": "Source node UUID" },
+              "to": { "type": "string", "description": "Target node UUID" },
+              "type": { "type": "string", "enum": ["read", "write", "send"] }
+            },
+            "required": ["projectId", "from", "to", "type"]
+          }
+        },
+        {
+          "name": "wheel_delete_wire",
+          "description": "Remove a wire between two nodes.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "type": { "type": "string", "enum": ["read", "write", "send"] }
+            },
+            "required": ["projectId", "from", "to", "type"]
+          }
+        },
+        {
+          "name": "wheel_start_agent",
+          "description": "Start an agent node. The agent begins its process and becomes available to receive messages.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Agent node UUID" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_stop_agent",
+          "description": "Stop a running agent. It can be restarted later.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_send_to_agent",
+          "description": "Send a text message to a running agent. Returns the delivered message object.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "body": { "type": "string", "description": "Message text to send" }
+            },
+            "required": ["projectId", "nodeId", "body"]
+          }
+        },
+        {
+          "name": "wheel_agent_log",
+          "description": "Fetch an agent's log lines. Use 'since' to paginate (seq-based cursor).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "since": { "type": "number", "description": "Return lines after this sequence number" },
+              "stream": { "type": "string", "description": "Filter by stream name (e.g. stdout, stderr, transcript)" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_query_table",
+          "description": "Run a SQL query against a table node. Returns {columns, rows}.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Table node UUID" },
+              "sql": { "type": "string", "description": "SQL query (SELECT only)" }
+            },
+            "required": ["projectId", "nodeId", "sql"]
+          }
+        },
+        {
+          "name": "wheel_table_rows",
+          "description": "Fetch rows from a table node with pagination.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "limit": { "type": "number", "description": "Max rows (default 50)" },
+              "offset": { "type": "number", "description": "Skip rows (default 0)" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_put_secret",
+          "description": "Write a secret to a vault node. Vault values are write-only — they can never be read back through the API.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Vault node UUID" },
+              "key": { "type": "string" },
+              "value": { "type": "string" }
+            },
+            "required": ["projectId", "nodeId", "key", "value"]
+          }
+        },
+        {
+          "name": "wheel_apply_board",
+          "description": "Apply a board spec (create/update/delete nodes and wires declaratively). Use dryRun to preview changes before committing.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "board": { "type": "object", "description": "Board spec with nodes array" },
+              "dryRun": { "type": "boolean", "description": "Preview changes without applying (default false)" }
+            },
+            "required": ["projectId", "board"]
+          }
+        },
+        {
+          "name": "wheel_import_tool",
+          "description": "Import an API spec (OpenAPI, Swagger, Postman, Insomnia) to preview operations before placing a tool node.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "raw": { "type": "string", "description": "Raw spec document (JSON or YAML)" },
+              "format": { "type": "string", "enum": ["openapi", "swagger2", "postman", "insomnia"] }
+            },
+            "required": ["projectId", "raw"]
+          }
+        },
+        {
+          "name": "wheel_call_tool",
+          "description": "Call an operation on a tool node. Use dryRun to get the equivalent curl command.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Tool node UUID" },
+              "op": { "type": "string", "description": "Operation id" },
+              "args": { "type": "object", "description": "Operation arguments" },
+              "dryRun": { "type": "boolean", "description": "Return curl instead of executing" }
+            },
+            "required": ["projectId", "nodeId", "op", "args"]
+          }
+        },
+        {
+          "name": "wheel_messages",
+          "description": "Fetch recent inter-node messages on the board.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_chest_ls",
+          "description": "List files in a chest (blob storage) node.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Chest node UUID" },
+              "prefix": { "type": "string", "description": "Filter by key prefix" }
+            },
+            "required": ["projectId", "nodeId"]
+          }
+        },
+        {
+          "name": "wheel_open_project",
+          "description": "Fetch a Wheel project's board and return a spawn plan: for each agent node, a worker spec (role, system prompt with wire context, position); for each non-agent node, a note spec (title, body, position). The calling agent executes the plan using AgentGrid's spawn_worker/spawn_note_pane. Also returns the wire topology and a nodeId→spec mapping for inter-agent messaging via wheel_send_to_agent.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string", "description": "Project UUID" },
+              "scale": { "type": "number", "description": "Pixels per Wheel grid cell (default 120)" },
+              "offsetX": { "type": "number", "description": "X offset in pixels (default 100)" },
+              "offsetY": { "type": "number", "description": "Y offset in pixels (default 100)" }
+            },
+            "required": ["projectId"]
+          }
+        },
+        {
+          "name": "wheel_poll_messages",
+          "description": "Poll for new inter-node messages since a given cursor. Returns messages and the new cursor for the next poll. Used for Option B messaging where Wheel's engine is the message bus between AgentGrid workers.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": { "type": "string" },
+              "since": { "type": "number", "description": "Message sequence cursor (0 for first poll)" }
+            },
+            "required": ["projectId"]
+          }
+        }
+      ]
+    }
+  }
+}

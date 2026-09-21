@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wheel Projects</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .refresh-btn {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .refresh-btn:hover { color: #ccc; }
+
+    .project-status {
+      font-size: 10px;
+      color: #666;
+      margin-left: 4px;
+    }
+    .project-status.running { color: #5a5; }
+    .project-status.stopped { color: #a55; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .peer-badge {
+      font-size: 10px;
+      color: #888;
+      background: #2a2a2a;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-left: 6px;
+    }
+
+    .empty-state {
+      color: #666;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="explorer-root">
+    <div id="not-configured" class="empty-state">
+      Not configured. Open the Wheel panel to set your API URL.
+    </div>
+
+    <div id="configured" hidden>
+      <div class="header">
+        <span class="dot" id="conn-dot"></span>
+        <span id="conn-label">Checking...</span>
+        <span id="peer-badge" class="peer-badge" hidden></span>
+      </div>
+
+      <div id="projects-area" style="margin-top: 8px;">
+        <div class="section-header">
+          <h3>Projects</h3>
+          <button class="refresh-btn" id="btn-refresh" title="Refresh">&#x21bb;</button>
+        </div>
+        <ul id="project-list"></ul>
+        <p id="project-error" class="error" hidden></p>
+      </div>
+
+      <div id="sync-area" hidden style="margin-top: 8px;">
+        <div class="header">
+          <span class="dot" id="sync-dot"></span>
+          <span id="sync-label">Not synced</span>
+        </div>
+        <p id="sync-detail" class="dim"></p>
+      </div>
+    </div>
+  </div>
+  <script src="wheel-api.js"></script>
+  <script src="explorer.js"></script>
+</body>
+</html>
