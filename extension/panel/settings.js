@@ -173,13 +173,13 @@ async function init(retries) {
     if (secrets.apiUrl && secrets.apiToken) {
       showConnected(secrets.apiUrl)
     } else {
-      showSignin(secrets.apiUrl || '')
+      showSignin(secrets.apiUrl || 'https://wheel-api-production-28d3.up.railway.app')
     }
   } catch {
     if (retries > 0) {
       setTimeout(() => init(retries - 1), 1000)
     } else {
-      showSignin('')
+      showSignin('https://wheel-api-production-28d3.up.railway.app')
     }
   }
 }

@@ -738,8 +738,10 @@ async function init() {
     const url = secrets.apiUrl
     const token = secrets.apiToken
 
-    if (url) {
-      api = new WheelApi(url, token || '')
+    const effectiveUrl = url || 'https://wheel-api-production-28d3.up.railway.app'
+
+    if (url && token) {
+      api = new WheelApi(url, token)
       await showStatus()
 
       if (restored && boardSync.activeProjectId) {
@@ -748,7 +750,7 @@ async function init() {
         updateSyncStatus()
       }
     } else {
-      showSetup('')
+      showSetup(effectiveUrl)
     }
   } catch {
     showSetup('')
