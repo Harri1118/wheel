@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wheel Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #e0e0e0;
+      background: transparent;
+      padding: 8px 0;
+    }
+
+    .view { display: flex; flex-direction: column; gap: 10px; }
+    .view[hidden] { display: none !important; }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: #999;
+    }
+
+    input {
+      background: #252525;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: #e0e0e0;
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus { border-color: #666; }
+
+    button {
+      background: #333;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px 12px;
+      color: #e0e0e0;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #3a3a3a; }
+    button:disabled { opacity: 0.5; cursor: default; }
+
+    .btn-danger {
+      background: none;
+      border: 1px solid transparent;
+      color: #d55;
+      padding: 6px 12px;
+    }
+    .btn-danger:hover { color: #f66; }
+
+    .error { color: #e55; font-size: 12px; }
+
+    .connected-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .connected-label {
+      color: #5a5;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .connected-hint {
+      color: #777;
+      font-size: 12px;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #555;
+      font-size: 11px;
+    }
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #333;
+    }
+
+    .link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #888;
+      font-size: 11px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .link:hover { color: #bbb; }
+
+    #token-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading...</div>
+
+  <div id="signin" class="view" hidden>
+    <label>
+      API URL
+      <input id="input-url" type="url" placeholder="https://api.wheel.dev" />
+    </label>
+    <label>
+      Email
+      <input id="input-email" type="email" placeholder="you@example.com" />
+    </label>
+    <label>
+      Password
+      <input id="input-password" type="password" placeholder="Password" />
+    </label>
+    <button id="btn-signin">Sign in</button>
+    <div class="divider"><span>or</span></div>
+    <button id="btn-toggle-token" class="link">Use an API token instead</button>
+    <div id="token-section" hidden>
+      <label>
+        API Token
+        <input id="input-token" type="password" placeholder="wht_..." />
+      </label>
+      <button id="btn-save-token">Connect</button>
+    </div>
+    <p id="signin-error" class="error" hidden></p>
+  </div>
+
+  <div id="connected" class="view" hidden>
+    <div class="connected-row">
+      <div>
+        <div class="connected-label">Connected</div>
+        <div class="connected-hint" id="connected-url"></div>
+      </div>
+      <button id="btn-signout" class="btn-danger">Sign Out</button>
+    </div>
+  </div>
+
+  <script>
+    const ext = window.agentGridExtension
+    let reqId = 0
+
+    function sendRequest(method, params) {
+      return new Promise((resolve, reject) => {
+        const id = `r-${++reqId}`
+        const cleanup = ext.onMessage((msg) => {
+          if (msg.kind !== 'response' || msg.id !== id) return
+          cleanup()
+          if (msg.ok) resolve(msg.result)
+          else reject(new Error(msg.error))
+        })
+        ext.postMessage({ kind: 'request', id, method, params })
+      })
+    }
+
+    async function loadSecrets() {
+      const secrets = await sendRequest('secrets.list')
+      const map = {}
+      if (Array.isArray(secrets)) {
+        for (const s of secrets) map[s.key] = s.value
+      }
+      return map
+    }
+
+    async function saveSecret(key, value) {
+      await sendRequest('secrets.set', { key, value })
+    }
+
+    async function clearSecret(key) {
+      await sendRequest('secrets.clear', { key })
+    }
+
+    const $loading = document.getElementById('loading')
+    const $signin = document.getElementById('signin')
+    const $connected = document.getElementById('connected')
+    const $connectedUrl = document.getElementById('connected-url')
+    const $signinError = document.getElementById('signin-error')
+    const $inputUrl = document.getElementById('input-url')
+    const $inputEmail = document.getElementById('input-email')
+    const $inputPassword = document.getElementById('input-password')
+    const $inputToken = document.getElementById('input-token')
+    const $tokenSection = document.getElementById('token-section')
+
+    function showSignin(urlVal) {
+      $loading.hidden = true
+      $signin.hidden = false
+      $connected.hidden = true
+      $inputUrl.value = urlVal || ''
+      $inputEmail.value = ''
+      $inputPassword.value = ''
+      $inputToken.value = ''
+      $tokenSection.hidden = true
+      $signinError.hidden = true
+    }
+
+    function showConnected(url) {
+      $loading.hidden = true
+      $signin.hidden = true
+      $connected.hidden = false
+      $connectedUrl.textContent = url
+    }
+
+    document.getElementById('btn-signin').addEventListener('click', async () => {
+      const url = $inputUrl.value.trim().replace(/\/+$/, '')
+      if (!url) {
+        $signinError.textContent = 'API URL is required'
+        $signinError.hidden = false
+        return
+      }
+
+      const email = $inputEmail.value.trim()
+      const password = $inputPassword.value
+      if (!email || !password) {
+        $signinError.textContent = 'Email and password are required'
+        $signinError.hidden = false
+        return
+      }
+
+      const btn = document.getElementById('btn-signin')
+      btn.disabled = true
+      btn.textContent = 'Signing in...'
+      $signinError.hidden = true
+
+      try {
+        const loginRes = await fetch(`${url}/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+
+        if (!loginRes.ok) {
+          let msg = `HTTP ${loginRes.status}`
+          try {
+            const body = await loginRes.json()
+            if (body?.error?.message) msg = body.error.message
+          } catch {}
+          throw new Error(msg)
+        }
+
+        const session = await loginRes.json()
+
+        const tokenRes = await fetch(`${url}/v1/auth/tokens`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-auth-token': session.token,
+          },
+          body: JSON.stringify({ name: 'AgentGrid' }),
+        })
+
+        if (!tokenRes.ok) {
+          let msg = `HTTP ${tokenRes.status}`
+          try {
+            const body = await tokenRes.json()
+            if (body?.error?.message) msg = body.error.message
+          } catch {}
+          throw new Error(msg)
+        }
+
+        const created = await tokenRes.json()
+
+        await saveSecret('apiUrl', url)
+        await saveSecret('apiToken', created.token)
+        showConnected(url)
+      } catch (err) {
+        $signinError.textContent = err.message
+        $signinError.hidden = false
+      } finally {
+        btn.disabled = false
+        btn.textContent = 'Sign in'
+      }
+    })
+
+    document.getElementById('btn-toggle-token').addEventListener('click', () => {
+      $tokenSection.hidden = !$tokenSection.hidden
+    })
+
+    document.getElementById('btn-save-token').addEventListener('click', async () => {
+      const url = $inputUrl.value.trim().replace(/\/+$/, '')
+      if (!url) {
+        $signinError.textContent = 'API URL is required'
+        $signinError.hidden = false
+        return
+      }
+
+      const token = $inputToken.value.trim()
+
+      try {
+        await saveSecret('apiUrl', url)
+        if (token) await saveSecret('apiToken', token)
+        showConnected(url)
+      } catch (err) {
+        $signinError.textContent = err.message
+        $signinError.hidden = false
+      }
+    })
+
+    document.getElementById('btn-signout').addEventListener('click', async () => {
+      await clearSecret('apiUrl')
+      await clearSecret('apiToken')
+      showSignin('')
+    })
+
+    async function init() {
+      try {
+        const secrets = await loadSecrets()
+        if (secrets.apiUrl && secrets.apiToken) {
+          showConnected(secrets.apiUrl)
+        } else {
+          showSignin(secrets.apiUrl || '')
+        }
+      } catch {
+        showSignin('')
+      }
+    }
+
+    init()
+  </script>
+</body>
+</html>

@@ -50,6 +50,13 @@
           }
         }
       ],
+      "settingsPanels": [
+        {
+          "id": "wheel-settings",
+          "title": "Wheel",
+          "entrypoint": "extension/panel/settings.html"
+        }
+      ],
       "explorerSections": [
         {
           "id": "wheel-projects",
