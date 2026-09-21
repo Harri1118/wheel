@@ -10,7 +10,7 @@
   },
   "permissions": ["agent:tools", "secrets", "network", "ui:panel", "ui:slots", "canvas:spawn", "canvas:read", "canvas:events"],
   "networkAccess": {
-    "external": ["https://*.wheel.dev", "http://127.0.0.1:*", "http://localhost:*"]
+    "hosts": ["https://*.wheel.dev", "http://127.0.0.1:*", "http://localhost:*"]
   },
   "contributes": {
     "capabilities": {

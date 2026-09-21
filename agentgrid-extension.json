@@ -19,7 +19,7 @@
     "canvas:events"
   ],
   "networkAccess": {
-    "external": [
+    "hosts": [
       "https://*.wheel.dev",
       "http://127.0.0.1:*",
       "http://localhost:*"
