@@ -56,13 +56,13 @@ class BoardSync {
   async spawnWorkerForNode(node, position) {
     const relevantWires = this.wires.filter(w => w.from === node.id || w.to === node.id)
     const prompt = buildAgentPrompt(node, relevantWires, this.nodesById, this.projectId)
-    const cfg = node.config || {}
 
-    const result = await this.sendRequest('canvas.spawnWorker', {
-      role: 'builder',
-      prompt,
-      harness: cfg.harness || 'claude',
-      position,
+    const result = await this.sendRequest('canvas.spawnPane', {
+      kind: 'note',
+      title: `${node.name} (agent)`,
+      body: prompt,
+      x: position?.x,
+      y: position?.y,
     })
 
     if (result?.paneId) {
@@ -76,10 +76,12 @@ class BoardSync {
   async spawnNoteForNode(node, position) {
     const body = buildNoteBody(node)
 
-    const result = await this.sendRequest('canvas.spawnNote', {
+    const result = await this.sendRequest('canvas.spawnPane', {
+      kind: 'note',
       title: `${node.name} (${node.type})`,
       body,
-      position,
+      x: position?.x,
+      y: position?.y,
     })
 
     if (result?.paneId) {
@@ -98,10 +100,10 @@ class BoardSync {
     const body = this.buildTopologyBody()
 
     try {
-      const result = await this.sendRequest('canvas.spawnNote', {
+      const result = await this.sendRequest('canvas.spawnPane', {
+        kind: 'note',
         title: 'Wheel Topology',
         body,
-        color: 'blue',
       })
       this.topologyPaneId = result?.paneId || null
     } catch {
