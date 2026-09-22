@@ -3,81 +3,42 @@
   "version": "0.1.0",
   "publisher": "wheel",
   "displayName": "Wheel",
-  "description": "Orchestrate AI agent boards on Wheel \u2014 create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
-  "main": "extension/entry.js",
+  "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
+  "main": "entry.js",
   "engines": {
     "agentgrid": ">=2.0.0"
   },
-  "permissions": [
-    "agent:tools",
-    "secrets",
-    "network",
-    "ui:panel",
-    "ui:slots",
-    "canvas:spawn",
-    "canvas:read",
-    "canvas:events"
-  ],
+  "permissions": ["agent:tools", "secrets", "network", "ui:panel", "ui:slots", "canvas:spawn", "canvas:read", "canvas:events"],
   "networkAccess": {
-    "hosts": [
-      "https://*.wheel.dev",
-      "http://127.0.0.1:*",
-      "http://localhost:*"
-    ]
+    "hosts": ["https://*.wheel.dev", "https://*.up.railway.app", "http://127.0.0.1:*", "http://localhost:*"]
   },
   "contributes": {
     "capabilities": {
       "secrets": [
-        {
-          "key": "apiUrl",
-          "label": "Wheel API URL (e.g. https://api.wheel.dev or http://127.0.0.1:8787)"
-        },
-        {
-          "key": "apiToken",
-          "label": "Wheel API token (wht_...)"
-        }
+        { "key": "apiUrl", "label": "Wheel API URL (e.g. https://api.wheel.dev or http://127.0.0.1:8787)" },
+        { "key": "apiToken", "label": "Wheel API token (wht_...)" }
       ]
     },
     "ui": {
-      "paneTypes": [
-        {
-          "id": "runtime",
-          "title": "Wheel",
-          "entrypoint": "extension/panel/index.html",
-          "defaultSize": {
-            "width": 360,
-            "height": 280
-          }
-        }
-      ],
-      "settingsPanels": [
-        {
-          "id": "wheel-settings",
-          "title": "Wheel",
-          "entrypoint": "extension/panel/settings.html"
-        }
-      ],
       "explorerSections": [
         {
           "id": "wheel-projects",
           "title": "Wheel Projects",
-          "entrypoint": "extension/panel/explorer.html",
+          "entrypoint": "panel/explorer.html",
           "position": "bottom"
         },
         {
           "id": "wheel-inspector",
           "title": "Wheel Inspector",
-          "entrypoint": "extension/panel/inspector.html",
+          "entrypoint": "panel/inspector.html",
           "position": "bottom"
         }
       ],
-      "spawnMenuItems": [
+      "settingsPanels": [
         {
-          "id": "wheel.addNode",
-          "label": "Add Wheel Node",
-          "icon": "plus-circle",
-          "category": "tools",
-          "description": "Create a new node on the connected Wheel board"
+          "id": "settings",
+          "title": "Wheel",
+          "entrypoint": "panel/settings.html"
         }
       ],
       "toolHandlers": [
@@ -96,14 +57,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string",
-                "description": "Project UUID"
-              }
+              "projectId": { "type": "string", "description": "Project UUID" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -112,14 +68,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "name": {
-                "type": "string",
-                "description": "Project name"
-              }
+              "name": { "type": "string", "description": "Project name" }
             },
-            "required": [
-              "name"
-            ]
+            "required": ["name"]
           }
         },
         {
@@ -128,14 +79,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string",
-                "description": "Project UUID"
-              }
+              "projectId": { "type": "string", "description": "Project UUID" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -144,14 +90,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string",
-                "description": "Project UUID"
-              }
+              "projectId": { "type": "string", "description": "Project UUID" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -160,14 +101,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string",
-                "description": "Project UUID"
-              }
+              "projectId": { "type": "string", "description": "Project UUID" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -176,53 +112,23 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string",
-                "description": "Node name (lowercase alphanumeric, dashes, underscores)"
-              },
+              "projectId": { "type": "string" },
+              "name": { "type": "string", "description": "Node name (lowercase alphanumeric, dashes, underscores)" },
               "type": {
                 "type": "string",
-                "enum": [
-                  "agent",
-                  "ctx",
-                  "table",
-                  "endpoint",
-                  "script",
-                  "mcp",
-                  "vault",
-                  "chest",
-                  "tool"
-                ]
+                "enum": ["agent", "ctx", "table", "endpoint", "script", "mcp", "vault", "chest", "tool"]
               },
               "position": {
                 "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ]
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                "required": ["x", "y"]
               },
               "config": {
                 "type": "object",
                 "description": "Node-type-specific config. Omit to use defaults."
               }
             },
-            "required": [
-              "projectId",
-              "name",
-              "type",
-              "position"
-            ]
+            "required": ["projectId", "name", "type", "position"]
           }
         },
         {
@@ -231,35 +137,16 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Node UUID"
-              },
-              "name": {
-                "type": "string"
-              },
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Node UUID" },
+              "name": { "type": "string" },
               "position": {
                 "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                }
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
               },
-              "config": {
-                "type": "object"
-              }
+              "config": { "type": "object" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
@@ -268,51 +155,24 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
           "name": "wheel_create_wire",
-          "description": "Wire two nodes together. Types: read, write, send. Not all pairs are legal \u2014 the engine enforces the wire matrix (e.g. agent\u2192table supports read/write, ctx\u2192agent supports send).",
+          "description": "Wire two nodes together. Types: read, write, send. Not all pairs are legal — the engine enforces the wire matrix (e.g. agent→table supports read/write, ctx→agent supports send).",
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "from": {
-                "type": "string",
-                "description": "Source node UUID"
-              },
-              "to": {
-                "type": "string",
-                "description": "Target node UUID"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "read",
-                  "write",
-                  "send"
-                ]
-              }
+              "projectId": { "type": "string" },
+              "from": { "type": "string", "description": "Source node UUID" },
+              "to": { "type": "string", "description": "Target node UUID" },
+              "type": { "type": "string", "enum": ["read", "write", "send"] }
             },
-            "required": [
-              "projectId",
-              "from",
-              "to",
-              "type"
-            ]
+            "required": ["projectId", "from", "to", "type"]
           }
         },
         {
@@ -321,30 +181,12 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "from": {
-                "type": "string"
-              },
-              "to": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "read",
-                  "write",
-                  "send"
-                ]
-              }
+              "projectId": { "type": "string" },
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "type": { "type": "string", "enum": ["read", "write", "send"] }
             },
-            "required": [
-              "projectId",
-              "from",
-              "to",
-              "type"
-            ]
+            "required": ["projectId", "from", "to", "type"]
           }
         },
         {
@@ -353,18 +195,10 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Agent node UUID"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Agent node UUID" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
@@ -373,17 +207,10 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
@@ -392,22 +219,11 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              },
-              "body": {
-                "type": "string",
-                "description": "Message text to send"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "body": { "type": "string", "description": "Message text to send" }
             },
-            "required": [
-              "projectId",
-              "nodeId",
-              "body"
-            ]
+            "required": ["projectId", "nodeId", "body"]
           }
         },
         {
@@ -416,25 +232,12 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              },
-              "since": {
-                "type": "number",
-                "description": "Return lines after this sequence number"
-              },
-              "stream": {
-                "type": "string",
-                "description": "Filter by stream name (e.g. stdout, stderr, transcript)"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "since": { "type": "number", "description": "Return lines after this sequence number" },
+              "stream": { "type": "string", "description": "Filter by stream name (e.g. stdout, stderr, transcript)" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
@@ -443,23 +246,11 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Table node UUID"
-              },
-              "sql": {
-                "type": "string",
-                "description": "SQL query (SELECT only)"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Table node UUID" },
+              "sql": { "type": "string", "description": "SQL query (SELECT only)" }
             },
-            "required": [
-              "projectId",
-              "nodeId",
-              "sql"
-            ]
+            "required": ["projectId", "nodeId", "sql"]
           }
         },
         {
@@ -468,53 +259,26 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string"
-              },
-              "limit": {
-                "type": "number",
-                "description": "Max rows (default 50)"
-              },
-              "offset": {
-                "type": "number",
-                "description": "Skip rows (default 0)"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "limit": { "type": "number", "description": "Max rows (default 50)" },
+              "offset": { "type": "number", "description": "Skip rows (default 0)" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
           "name": "wheel_put_secret",
-          "description": "Write a secret to a vault node. Vault values are write-only \u2014 they can never be read back through the API.",
+          "description": "Write a secret to a vault node. Vault values are write-only — they can never be read back through the API.",
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Vault node UUID"
-              },
-              "key": {
-                "type": "string"
-              },
-              "value": {
-                "type": "string"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Vault node UUID" },
+              "key": { "type": "string" },
+              "value": { "type": "string" }
             },
-            "required": [
-              "projectId",
-              "nodeId",
-              "key",
-              "value"
-            ]
+            "required": ["projectId", "nodeId", "key", "value"]
           }
         },
         {
@@ -523,22 +287,11 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "board": {
-                "type": "object",
-                "description": "Board spec with nodes array"
-              },
-              "dryRun": {
-                "type": "boolean",
-                "description": "Preview changes without applying (default false)"
-              }
+              "projectId": { "type": "string" },
+              "board": { "type": "object", "description": "Board spec with nodes array" },
+              "dryRun": { "type": "boolean", "description": "Preview changes without applying (default false)" }
             },
-            "required": [
-              "projectId",
-              "board"
-            ]
+            "required": ["projectId", "board"]
           }
         },
         {
@@ -547,27 +300,11 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "raw": {
-                "type": "string",
-                "description": "Raw spec document (JSON or YAML)"
-              },
-              "format": {
-                "type": "string",
-                "enum": [
-                  "openapi",
-                  "swagger2",
-                  "postman",
-                  "insomnia"
-                ]
-              }
+              "projectId": { "type": "string" },
+              "raw": { "type": "string", "description": "Raw spec document (JSON or YAML)" },
+              "format": { "type": "string", "enum": ["openapi", "swagger2", "postman", "insomnia"] }
             },
-            "required": [
-              "projectId",
-              "raw"
-            ]
+            "required": ["projectId", "raw"]
           }
         },
         {
@@ -576,32 +313,13 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Tool node UUID"
-              },
-              "op": {
-                "type": "string",
-                "description": "Operation id"
-              },
-              "args": {
-                "type": "object",
-                "description": "Operation arguments"
-              },
-              "dryRun": {
-                "type": "boolean",
-                "description": "Return curl instead of executing"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Tool node UUID" },
+              "op": { "type": "string", "description": "Operation id" },
+              "args": { "type": "object", "description": "Operation arguments" },
+              "dryRun": { "type": "boolean", "description": "Return curl instead of executing" }
             },
-            "required": [
-              "projectId",
-              "nodeId",
-              "op",
-              "args"
-            ]
+            "required": ["projectId", "nodeId", "op", "args"]
           }
         },
         {
@@ -610,13 +328,9 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              }
+              "projectId": { "type": "string" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -625,50 +339,25 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "nodeId": {
-                "type": "string",
-                "description": "Chest node UUID"
-              },
-              "prefix": {
-                "type": "string",
-                "description": "Filter by key prefix"
-              }
+              "projectId": { "type": "string" },
+              "nodeId": { "type": "string", "description": "Chest node UUID" },
+              "prefix": { "type": "string", "description": "Filter by key prefix" }
             },
-            "required": [
-              "projectId",
-              "nodeId"
-            ]
+            "required": ["projectId", "nodeId"]
           }
         },
         {
           "name": "wheel_open_project",
-          "description": "Fetch a Wheel project's board and return a spawn plan: for each agent node, a worker spec (role, system prompt with wire context, position); for each non-agent node, a note spec (title, body, position). The calling agent executes the plan using AgentGrid's spawn_worker/spawn_note_pane. Also returns the wire topology and a nodeId\u2192spec mapping for inter-agent messaging via wheel_send_to_agent.",
+          "description": "Fetch a Wheel project's board and return a spawn plan: for each agent node, a worker spec (role, system prompt with wire context, position); for each non-agent node, a note spec (title, body, position). The calling agent executes the plan using AgentGrid's spawn_worker/spawn_note_pane. Also returns the wire topology and a nodeId→spec mapping for inter-agent messaging via wheel_send_to_agent.",
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string",
-                "description": "Project UUID"
-              },
-              "scale": {
-                "type": "number",
-                "description": "Pixels per Wheel grid cell (default 120)"
-              },
-              "offsetX": {
-                "type": "number",
-                "description": "X offset in pixels (default 100)"
-              },
-              "offsetY": {
-                "type": "number",
-                "description": "Y offset in pixels (default 100)"
-              }
+              "projectId": { "type": "string", "description": "Project UUID" },
+              "scale": { "type": "number", "description": "Pixels per Wheel grid cell (default 120)" },
+              "offsetX": { "type": "number", "description": "X offset in pixels (default 100)" },
+              "offsetY": { "type": "number", "description": "Y offset in pixels (default 100)" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         },
         {
@@ -677,17 +366,10 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "projectId": {
-                "type": "string"
-              },
-              "since": {
-                "type": "number",
-                "description": "Message sequence cursor (0 for first poll)"
-              }
+              "projectId": { "type": "string" },
+              "since": { "type": "number", "description": "Message sequence cursor (0 for first poll)" }
             },
-            "required": [
-              "projectId"
-            ]
+            "required": ["projectId"]
           }
         }
       ]
