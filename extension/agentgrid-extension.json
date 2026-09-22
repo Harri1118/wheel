@@ -16,7 +16,8 @@
     "capabilities": {
       "secrets": [
         { "key": "apiUrl", "label": "Wheel API URL (e.g. https://api.wheel.dev or http://127.0.0.1:8787)" },
-        { "key": "apiToken", "label": "Wheel API token (wht_...)" }
+        { "key": "apiToken", "label": "Wheel API token (wht_...)" },
+        { "key": "boardState", "label": "Internal board state (managed automatically)" }
       ]
     },
     "ui": {
