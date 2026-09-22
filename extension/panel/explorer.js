@@ -99,14 +99,26 @@ async function openProject(projectId) {
   $syncDetail.textContent = ''
 
   try {
-    const result = await explorerSendRequest('tools.invoke', {
-      toolName: 'wheel_open_project',
-      input: { projectId },
-    })
+    const board = await explorerApi.getBoard(projectId)
+    const nodes = board.nodes || []
+    let spawned = 0
+
+    for (const node of nodes) {
+      const title = `${node.name} (${node.type})`
+      const body = node.type === 'agent'
+        ? `**Agent:** ${node.name}\n**Harness:** ${node.config?.harness || 'claude'}\n\n${node.config?.system_prompt || ''}`
+        : `**${node.type}:** ${node.name}\n\n${JSON.stringify(node.config || {}, null, 2)}`
+
+      await explorerSendRequest('canvas.spawnPane', {
+        kind: 'note',
+        title,
+        body,
+      })
+      spawned++
+    }
 
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'
-    const spawned = result?.spawned ?? '?'
     $syncDetail.textContent = `${spawned} pane${spawned === 1 ? '' : 's'} on canvas`
   } catch (err) {
     $syncDot.className = 'dot err'
