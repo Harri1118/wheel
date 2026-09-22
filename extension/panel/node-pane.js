@@ -29,17 +29,17 @@ let paneApi = null
 
 async function initNodePane() {
   try {
-    const state = await paneSendRequest('pane.loadState')
-    if (!state?.data?.projectId || !state?.data?.nodeId) {
-      $loading.textContent = 'No node data.'
+    const desc = await paneSendRequest('host.describe')
+    const myPaneId = desc?.paneId
+    if (!myPaneId) {
+      $loading.textContent = 'No pane identity.'
       return
     }
 
-    const { projectId, nodeId, nodeType, nodeName, nodeConfig, wires } = state.data
-
-    const [urlResult, tokenResult] = await Promise.all([
+    const [urlResult, tokenResult, boardResult] = await Promise.all([
       paneSendRequest('secrets.get', { key: 'apiUrl' }),
       paneSendRequest('secrets.get', { key: 'apiToken' }),
+      paneSendRequest('secrets.get', { key: 'boardState' }),
     ])
 
     const apiUrl = urlResult?.value || DEFAULT_API_URL
@@ -49,12 +49,25 @@ async function initNodePane() {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
+    if (!boardResult?.value) {
+      $loading.textContent = 'No board synced.'
+      return
+    }
+
+    const board = JSON.parse(boardResult.value)
+    const entry = board.paneToNode?.[myPaneId]
+    if (!entry) {
+      $loading.textContent = 'Node not found for this pane.'
+      return
+    }
+
+    const { nodeId, nodeType, nodeName, nodeConfig, wires } = entry
     nodeData = { id: nodeId, type: nodeType, name: nodeName, config: nodeConfig || {}, wires: wires || [] }
 
     renderNode(nodeData)
 
     if (paneApi && nodeType === 'agent') {
-      pollAgentStatus(projectId, nodeId)
+      pollAgentStatus(board.projectId, nodeId)
     }
   } catch (err) {
     $loading.textContent = err.message

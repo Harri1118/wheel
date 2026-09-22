@@ -109,32 +109,11 @@ async function openProject(projectId) {
     const nodeToPane = []
 
     for (const node of nodes) {
-      const nodeWires = wires
-        .filter(w => w.from === node.id || w.to === node.id)
-        .map(w => ({
-          type: w.type,
-          direction: w.from === node.id ? 'outgoing' : 'incoming',
-          peerName: (nodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
-          peerType: (nodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
-        }))
-
-      const nodeState = {
-        projectId,
-        nodeId: node.id,
-        nodeType: node.type,
-        nodeName: node.name,
-        nodeConfig: node.config,
-        wires: nodeWires,
-      }
-
-      const body = node.type === 'agent'
-        ? `**${node.type.toUpperCase()}** ${node.name}\n\nHarness: ${node.config?.harness || 'claude'}\n${node.config?.system_prompt ? `\n${node.config.system_prompt}` : ''}`
-        : `**${node.type.toUpperCase()}** ${node.name}\n\n${Object.entries(node.config || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}`
-
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
-        body,
+        extensionId: 'wheel.wheel',
+        surfaceId: 'wheel-node',
       })
 
       if (result?.paneId) {
@@ -145,8 +124,23 @@ async function openProject(projectId) {
     }
 
     const paneToNode = {}
-    for (const [nid, e] of nodeToPane) {
-      paneToNode[e.paneId] = { nodeId: nid, nodeType: nodesById[nid]?.type, nodeName: nodesById[nid]?.name, nodeConfig: nodesById[nid]?.config }
+    for (const [nid, entry] of nodeToPane) {
+      const n = nodesById[nid]
+      const nodeWires = wires
+        .filter(w => w.from === nid || w.to === nid)
+        .map(w => ({
+          type: w.type,
+          direction: w.from === nid ? 'outgoing' : 'incoming',
+          peerName: (nodesById[w.from === nid ? w.to : w.from] || {}).name || 'unknown',
+          peerType: (nodesById[w.from === nid ? w.to : w.from] || {}).type || 'unknown',
+        }))
+      paneToNode[entry.paneId] = {
+        nodeId: nid,
+        nodeType: n?.type,
+        nodeName: n?.name,
+        nodeConfig: n?.config,
+        wires: nodeWires,
+      }
     }
 
     const boardState = { projectId, paneToNode, nodesById }
