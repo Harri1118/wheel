@@ -21,7 +21,7 @@
       ]
     },
     "ui": {
-      "canvasPanes": [
+      "paneTypes": [
         {
           "id": "wheel-node",
           "title": "Wheel Node",
