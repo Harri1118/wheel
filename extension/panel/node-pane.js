@@ -36,10 +36,9 @@ async function initNodePane() {
       return
     }
 
-    const [urlResult, tokenResult, boardResult] = await Promise.all([
+    const [urlResult, tokenResult] = await Promise.all([
       paneSendRequest('secrets.get', { key: 'apiUrl' }),
       paneSendRequest('secrets.get', { key: 'apiToken' }),
-      paneSendRequest('secrets.get', { key: 'boardState' }),
     ])
 
     const apiUrl = urlResult?.value || DEFAULT_API_URL
@@ -49,29 +48,36 @@ async function initNodePane() {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
-    if (!boardResult?.value) {
-      $loading.textContent = 'No board synced.'
-      return
-    }
-
-    const board = JSON.parse(boardResult.value)
-    const entry = board.paneToNode?.[myPaneId]
+    const entry = await waitForBoardEntry(myPaneId)
     if (!entry) {
-      $loading.textContent = 'Node not found for this pane.'
+      $loading.textContent = 'Node not found.'
       return
     }
 
-    const { nodeId, nodeType, nodeName, nodeConfig, wires } = entry
+    const { projectId, nodeId, nodeType, nodeName, nodeConfig, wires } = entry
     nodeData = { id: nodeId, type: nodeType, name: nodeName, config: nodeConfig || {}, wires: wires || [] }
 
     renderNode(nodeData)
 
     if (paneApi && nodeType === 'agent') {
-      pollAgentStatus(board.projectId, nodeId)
+      pollAgentStatus(projectId, nodeId)
     }
   } catch (err) {
     $loading.textContent = err.message
   }
+}
+
+async function waitForBoardEntry(paneId) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const result = await paneSendRequest('secrets.get', { key: 'boardState' })
+    if (result?.value) {
+      const board = JSON.parse(result.value)
+      const entry = board.paneToNode?.[paneId]
+      if (entry) return { ...entry, projectId: board.projectId }
+    }
+    await new Promise(r => setTimeout(r, 500))
+  }
+  return null
 }
 
 function renderNode(node) {
