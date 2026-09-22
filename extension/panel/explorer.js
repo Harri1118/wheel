@@ -101,21 +101,60 @@ async function openProject(projectId) {
   try {
     const board = await explorerApi.getBoard(projectId)
     const nodes = board.nodes || []
+    const wires = board.wires || []
+    const nodesById = {}
+    for (const n of nodes) nodesById[n.id] = n
+
     let spawned = 0
+    const nodeToPane = []
 
     for (const node of nodes) {
-      const title = `${node.name} (${node.type})`
-      const body = node.type === 'agent'
-        ? `**Agent:** ${node.name}\n**Harness:** ${node.config?.harness || 'claude'}\n\n${node.config?.system_prompt || ''}`
-        : `**${node.type}:** ${node.name}\n\n${JSON.stringify(node.config || {}, null, 2)}`
+      const nodeWires = wires
+        .filter(w => w.from === node.id || w.to === node.id)
+        .map(w => ({
+          type: w.type,
+          direction: w.from === node.id ? 'outgoing' : 'incoming',
+          peerName: (nodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
+          peerType: (nodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
+        }))
 
-      await explorerSendRequest('canvas.spawnPane', {
+      const nodeState = {
+        projectId,
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeName: node.name,
+        nodeConfig: node.config,
+        wires: nodeWires,
+      }
+
+      const body = node.type === 'agent'
+        ? `**${node.type.toUpperCase()}** ${node.name}\n\nHarness: ${node.config?.harness || 'claude'}\n${node.config?.system_prompt ? `\n${node.config.system_prompt}` : ''}`
+        : `**${node.type.toUpperCase()}** ${node.name}\n\n${Object.entries(node.config || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}`
+
+      const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
-        title,
+        title: node.name,
         body,
       })
+
+      if (result?.paneId) {
+        nodeToPane.push([node.id, { paneId: result.paneId, type: node.type === 'agent' ? 'worker' : 'note' }])
+      }
+
       spawned++
     }
+
+    const paneToNode = {}
+    for (const [nid, e] of nodeToPane) {
+      paneToNode[e.paneId] = { nodeId: nid, nodeType: nodesById[nid]?.type, nodeName: nodesById[nid]?.name, nodeConfig: nodesById[nid]?.config }
+    }
+
+    const boardState = { projectId, paneToNode, nodesById }
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(boardState),
+    })
 
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'

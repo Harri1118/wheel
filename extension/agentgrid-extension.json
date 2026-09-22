@@ -20,6 +20,13 @@
       ]
     },
     "ui": {
+      "canvasPanes": [
+        {
+          "id": "wheel-node",
+          "title": "Wheel Node",
+          "entrypoint": "panel/node-pane.html"
+        }
+      ],
       "explorerSections": [
         {
           "id": "wheel-projects",

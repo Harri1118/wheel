@@ -4,7 +4,6 @@
 
 const ext = window.agentGridExtension
 let inspectorReqId = 0
-let inspectorSync = null
 let inspectorApi = null
 let logPollTimer = null
 let logCursor = 0
@@ -271,69 +270,83 @@ function updateAgentStatus(status) {
   else if (status === 'error' || status === 'rate_limited') el.classList.add('status-error')
 }
 
-async function initInspector() {
-  inspectorSync = new BoardSync(inspectorSendRequest)
-  const restored = await inspectorSync.restoreState()
+let boardState = null
 
+async function initInspector() {
   try {
-    const secrets = await loadInspectorSecrets()
-    if (secrets.apiUrl) {
-      inspectorApi = new WheelApi(secrets.apiUrl, secrets.apiToken || '')
+    const [urlResult, tokenResult, boardResult] = await Promise.all([
+      inspectorSendRequest('secrets.get', { key: 'apiUrl' }),
+      inspectorSendRequest('secrets.get', { key: 'apiToken' }),
+      inspectorSendRequest('secrets.get', { key: 'boardState' }),
+    ])
+
+    const apiUrl = urlResult?.value || 'https://wheel-api-production-28d3.up.railway.app'
+    const apiToken = tokenResult?.value || ''
+
+    if (apiUrl && apiToken) {
+      inspectorApi = new WheelApi(apiUrl, apiToken)
+    }
+
+    if (boardResult?.value) {
+      boardState = JSON.parse(boardResult.value)
     }
   } catch {
-    // secrets load failed — inspector works without API, just no log tail
+    // secrets load failed — inspector works without API
   }
 
-  if (!restored) {
-    showEmpty('No Wheel project synced. Open a project from the main Wheel panel.')
+  if (!boardState) {
+    showEmpty('No Wheel project synced. Open a project from the Wheel Projects panel.')
     return
   }
 
-  showEmpty(`Project: ${inspectorSync.activeProjectId} \u2014 ${inspectorSync.mappedNodeCount} nodes synced. Click a Wheel-backed pane to inspect.`)
+  showEmpty(`Project synced. Click a Wheel node on the canvas to inspect.`)
 
   listenForInspectorEvents()
-}
-
-async function loadInspectorSecrets() {
-  const secrets = await inspectorSendRequest('secrets.list')
-  const map = {}
-  if (Array.isArray(secrets)) {
-    for (const s of secrets) map[s.key] = s.value
-  }
-  return map
 }
 
 function listenForInspectorEvents() {
   ext.onMessage((msg) => {
     if (msg.kind !== 'event') return
 
-    if (msg.topic === 'canvas.paneMoved') {
+    if (msg.topic === 'canvas.paneFocused') {
       const paneId = msg.payload?.paneId
-      if (!paneId || !inspectorSync) return
-      const node = inspectorSync.nodeForPane(paneId)
-      if (node) showNode(node)
-    }
+      if (!paneId || !boardState) return
 
-    if (msg.topic === 'canvas.paneClose') {
-      const paneId = msg.payload?.paneId
-      if (!paneId || !inspectorSync) return
+      reloadBoardState().then(() => {
+        const entry = boardState?.paneToNode?.[paneId]
+        if (!entry) return
 
-      const node = inspectorSync.nodeForPane(paneId)
-      if (node && node.id === currentNodeId) {
-        showEmpty('Node removed from canvas.')
-      }
+        const node = boardState.nodesById?.[entry.nodeId]
+        if (node) {
+          const wires = []
+          showNode({ ...node, wires })
+        } else {
+          showNode({ id: entry.nodeId, type: entry.nodeType, name: entry.nodeName, config: entry.nodeConfig, wires: [] })
+        }
+      })
     }
 
     if (msg.topic === 'canvas.workerStatusChange') {
       const { paneId, status } = msg.payload || {}
-      if (!paneId || !inspectorSync) return
+      if (!paneId || !boardState) return
 
-      const entry = inspectorSync.paneToNode.get(paneId)
+      const entry = boardState.paneToNode?.[paneId]
       if (entry?.nodeId === currentNodeId) {
         updateAgentStatus(status)
       }
     }
   })
+}
+
+async function reloadBoardState() {
+  try {
+    const result = await inspectorSendRequest('secrets.get', { key: 'boardState' })
+    if (result?.value) {
+      boardState = JSON.parse(result.value)
+    }
+  } catch {
+    // reload failed — use cached
+  }
 }
 
 initInspector()
