@@ -20,12 +20,14 @@ function sendRequest(method, params) {
 }
 
 async function loadSecrets() {
-  const secrets = await sendRequest('secrets.list')
-  const map = {}
-  if (Array.isArray(secrets)) {
-    for (const s of secrets) map[s.key] = s.value
+  const [urlResult, tokenResult] = await Promise.all([
+    sendRequest('secrets.get', { key: 'apiUrl' }),
+    sendRequest('secrets.get', { key: 'apiToken' }),
+  ])
+  return {
+    apiUrl: urlResult?.value,
+    apiToken: tokenResult?.value,
   }
-  return map
 }
 
 async function saveSecret(key, value) {

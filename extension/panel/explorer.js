@@ -32,12 +32,14 @@ const $syncLabel = document.getElementById('sync-label')
 const $syncDetail = document.getElementById('sync-detail')
 
 async function loadExplorerSecrets() {
-  const secrets = await explorerSendRequest('secrets.list')
-  const map = {}
-  if (Array.isArray(secrets)) {
-    for (const s of secrets) map[s.key] = s.value
+  const [urlResult, tokenResult] = await Promise.all([
+    explorerSendRequest('secrets.get', { key: 'apiUrl' }),
+    explorerSendRequest('secrets.get', { key: 'apiToken' }),
+  ])
+  return {
+    apiUrl: urlResult?.value,
+    apiToken: tokenResult?.value,
   }
-  return map
 }
 
 async function refreshProjects() {
