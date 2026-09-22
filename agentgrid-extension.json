@@ -4,7 +4,7 @@
   "publisher": "wheel",
   "displayName": "Wheel",
   "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
-  "main": "entry.js",
+  "main": "extension/entry.js",
   "engines": {
     "agentgrid": ">=2.0.0"
   },
@@ -24,13 +24,13 @@
         {
           "id": "wheel-projects",
           "title": "Wheel Projects",
-          "entrypoint": "panel/explorer.html",
+          "entrypoint": "extension/panel/explorer.html",
           "position": "bottom"
         },
         {
           "id": "wheel-inspector",
           "title": "Wheel Inspector",
-          "entrypoint": "panel/inspector.html",
+          "entrypoint": "extension/panel/inspector.html",
           "position": "bottom"
         }
       ],
@@ -38,7 +38,7 @@
         {
           "id": "settings",
           "title": "Wheel",
-          "entrypoint": "panel/settings.html"
+          "entrypoint": "extension/panel/settings.html"
         }
       ],
       "toolHandlers": [
