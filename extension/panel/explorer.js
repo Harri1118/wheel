@@ -149,7 +149,8 @@ async function refreshSyncStatus() {
   }
 }
 
-document.getElementById('btn-refresh').addEventListener('click', refreshProjects)
+document.getElementById('btn-refresh').addEventListener('click', initExplorer)
+document.getElementById('btn-retry')?.addEventListener('click', initExplorer)
 
 async function initExplorer() {
   try {
