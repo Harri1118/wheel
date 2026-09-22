@@ -99,6 +99,15 @@ async function openProject(projectId) {
   $syncDetail.textContent = ''
 
   try {
+    const oldBoardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (oldBoardResult?.value) {
+      const oldBoard = JSON.parse(oldBoardResult.value)
+      const oldPaneIds = Object.keys(oldBoard.paneToNode || {})
+      for (const pid of oldPaneIds) {
+        await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
+      }
+    }
+
     const board = await explorerApi.getBoard(projectId)
     const nodes = board.nodes || []
     const wires = board.wires || []

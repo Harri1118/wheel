@@ -74,11 +74,6 @@ async function waitForBoardEntry(paneId) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
       if (entry) return { ...entry, projectId: board.projectId }
-      if (attempt === 9 && board.paneToNode) {
-        const keys = Object.keys(board.paneToNode)
-        $loading.textContent = `My paneId: ${paneId} | stored: ${keys.join(', ')}`
-        return null
-      }
     }
     await new Promise(r => setTimeout(r, 500))
   }
