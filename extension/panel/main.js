@@ -526,6 +526,8 @@ const $syncDot = document.getElementById('sync-dot')
 const $syncLabel = document.getElementById('sync-label')
 const $syncDetail = document.getElementById('sync-detail')
 
+const DEFAULT_API_URL = 'https://wheel-api-production-28d3.up.railway.app'
+
 function showSetup(urlVal) {
   $setup.hidden = false
   $status.hidden = true
@@ -643,13 +645,7 @@ function updatePeerCount(count) {
 }
 
 function validateUrl() {
-  const url = $inputUrl.value.trim()
-
-  if (!url) {
-    $setupError.textContent = 'API URL is required'
-    $setupError.hidden = false
-    return null
-  }
+  const url = $inputUrl.value.trim() || DEFAULT_API_URL
 
   try {
     new URL(url)
@@ -738,7 +734,7 @@ async function init() {
     const url = secrets.apiUrl
     const token = secrets.apiToken
 
-    const effectiveUrl = url || 'https://wheel-api-production-28d3.up.railway.app'
+    const effectiveUrl = url || DEFAULT_API_URL
 
     if (url && token) {
       api = new WheelApi(url, token)

@@ -49,6 +49,8 @@ const $inputPassword = document.getElementById('input-password')
 const $inputToken = document.getElementById('input-token')
 const $tokenSection = document.getElementById('token-section')
 
+const DEFAULT_API_URL = 'https://wheel-api-production-28d3.up.railway.app'
+
 function showSignin(urlVal) {
   $loading.hidden = true
   $signin.hidden = false
@@ -69,12 +71,7 @@ function showConnected(url) {
 }
 
 document.getElementById('btn-signin').addEventListener('click', async () => {
-  const url = $inputUrl.value.trim().replace(/\/+$/, '')
-  if (!url) {
-    $signinError.textContent = 'API URL is required'
-    $signinError.hidden = false
-    return
-  }
+  const url = $inputUrl.value.trim().replace(/\/+$/, '') || DEFAULT_API_URL
 
   const email = $inputEmail.value.trim()
   const password = $inputPassword.value
@@ -144,12 +141,7 @@ document.getElementById('btn-toggle-token').addEventListener('click', () => {
 })
 
 document.getElementById('btn-save-token').addEventListener('click', async () => {
-  const url = $inputUrl.value.trim().replace(/\/+$/, '')
-  if (!url) {
-    $signinError.textContent = 'API URL is required'
-    $signinError.hidden = false
-    return
-  }
+  const url = $inputUrl.value.trim().replace(/\/+$/, '') || DEFAULT_API_URL
 
   const token = $inputToken.value.trim()
 
@@ -175,7 +167,7 @@ async function init(retries) {
     if (secrets.apiUrl && secrets.apiToken) {
       showConnected(secrets.apiUrl)
     } else {
-      showSignin(secrets.apiUrl || 'https://wheel-api-production-28d3.up.railway.app')
+      showSignin(secrets.apiUrl || DEFAULT_API_URL)
     }
   } catch {
     if (retries > 0) {

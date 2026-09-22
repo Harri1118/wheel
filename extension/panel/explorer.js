@@ -5,6 +5,7 @@
 const ext = window.agentGridExtension
 let explorerReqId = 0
 let explorerApi = null
+const DEFAULT_API_URL = 'https://wheel-api-production-28d3.up.railway.app'
 
 function explorerSendRequest(method, params) {
   return new Promise((resolve, reject) => {
@@ -160,7 +161,7 @@ async function initExplorer() {
     const url = secrets.apiUrl
     const token = secrets.apiToken
 
-    const effectiveUrl = url || 'https://wheel-api-production-28d3.up.railway.app'
+    const effectiveUrl = url || DEFAULT_API_URL
 
     if (!token) {
       $notConfigured.hidden = false
