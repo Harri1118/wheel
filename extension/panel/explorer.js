@@ -182,10 +182,41 @@ function listenForExplorerEvents() {
   ext.onMessage((msg) => {
     if (msg.kind !== 'event') return
 
-    if (msg.topic === 'canvas.workerStatusChange' || msg.topic === 'canvas.paneClose') {
+    if (msg.topic === 'canvas.workerStatusChange') {
       refreshSyncStatus()
     }
+
+    if (msg.topic === 'canvas.paneRemoved') {
+      const paneId = msg.payload?.paneId
+      if (paneId) handlePaneRemoved(paneId)
+    }
   })
+}
+
+async function handlePaneRemoved(paneId) {
+  try {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    const entry = board.paneToNode?.[paneId]
+    if (!entry) return
+
+    if (explorerApi && board.projectId && entry.nodeId) {
+      await explorerApi.deleteNode(board.projectId, entry.nodeId).catch(() => {})
+    }
+
+    delete board.paneToNode[paneId]
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(board),
+    })
+
+    refreshSyncStatus()
+  } catch {
+    // cleanup failed — not fatal
+  }
 }
 
 async function refreshSyncStatus() {
