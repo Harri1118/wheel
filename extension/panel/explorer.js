@@ -314,6 +314,56 @@ async function refreshSyncStatus() {
 document.getElementById('btn-refresh').addEventListener('click', initExplorer)
 document.getElementById('btn-retry')?.addEventListener('click', initExplorer)
 
+let boardSyncTimer = null
+
+async function pollBoardSync() {
+  if (!explorerApi) return
+
+  try {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    if (!board.projectId) return
+
+    const paneToNode = board.paneToNode || {}
+    const localNodeIds = new Set(Object.values(paneToNode).map(e => e.nodeId))
+    if (localNodeIds.size === 0) return
+
+    const apiBoard = await explorerApi.getBoard(board.projectId)
+    const remoteNodeIds = new Set((apiBoard.nodes || []).map(n => n.id))
+
+    const stalePaneIds = []
+    for (const [paneId, entry] of Object.entries(paneToNode)) {
+      if (!remoteNodeIds.has(entry.nodeId)) {
+        stalePaneIds.push(paneId)
+      }
+    }
+
+    if (stalePaneIds.length === 0) return
+
+    for (const paneId of stalePaneIds) {
+      delete paneToNode[paneId]
+      await explorerSendRequest('canvas.killPane', { paneId }).catch(() => {})
+    }
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(board),
+    })
+
+    refreshSyncStatus()
+    await syncWireConnections(board.projectId)
+  } catch {
+    // poll failed — not fatal
+  }
+}
+
+function startBoardSync() {
+  if (boardSyncTimer) clearInterval(boardSyncTimer)
+  boardSyncTimer = setInterval(pollBoardSync, 5000)
+}
+
 async function initExplorer() {
   console.log('[wheel:explorer] initExplorer starting')
   try {
@@ -338,6 +388,7 @@ async function initExplorer() {
     await refreshProjects()
     await refreshSyncStatus()
     listenForExplorerEvents()
+    startBoardSync()
     console.log('[wheel:explorer] initExplorer complete')
   } catch (err) {
     console.error('[wheel:explorer] initExplorer error:', err)
