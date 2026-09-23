@@ -40,14 +40,31 @@ let nodeData = null
 let paneApi = null
 let activeProjectId = null
 
+const SURFACE_TO_NODE_TYPE = {
+  'wheel-agent': 'agent',
+  'wheel-ctx': 'ctx',
+  'wheel-table': 'table',
+  'wheel-endpoint': 'endpoint',
+  'wheel-script': 'script',
+  'wheel-mcp': 'mcp',
+  'wheel-vault': 'vault',
+  'wheel-chest': 'chest',
+  'wheel-tool': 'tool',
+}
+
 async function initNodePane() {
+  console.log('[wheel:node-pane] initNodePane starting')
   try {
     const desc = await paneSendRequest('host.describe')
+    console.log('[wheel:node-pane] host.describe result:', JSON.stringify(desc))
     const myPaneId = desc?.paneId
+    const mySurfaceId = desc?.surfaceId
     if (!myPaneId) {
+      console.log('[wheel:node-pane] no paneId in describe result')
       $loading.textContent = 'No pane identity.'
       return
     }
+    console.log('[wheel:node-pane] paneId:', myPaneId, 'surfaceId:', mySurfaceId)
 
     const [urlResult, tokenResult] = await Promise.all([
       paneSendRequest('secrets.get', { key: 'apiUrl' }),
@@ -56,18 +73,32 @@ async function initNodePane() {
 
     const apiUrl = urlResult?.value || DEFAULT_API_URL
     const apiToken = tokenResult?.value || ''
+    console.log('[wheel:node-pane] apiUrl:', apiUrl, 'hasToken:', !!apiToken)
 
     if (apiToken) {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
-    const entry = await waitForBoardEntry(myPaneId)
+    console.log('[wheel:node-pane] waiting for board entry...')
+    let entry = await waitForBoardEntry(myPaneId)
+    console.log('[wheel:node-pane] waitForBoardEntry result:', entry ? JSON.stringify(entry).slice(0, 200) : 'null')
+
+    if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
+      console.log('[wheel:node-pane] no board entry, attempting autoCreateNode for surface:', mySurfaceId, '-> type:', SURFACE_TO_NODE_TYPE[mySurfaceId])
+      entry = await autoCreateNode(myPaneId, mySurfaceId)
+      console.log('[wheel:node-pane] autoCreateNode result:', entry ? JSON.stringify(entry).slice(0, 200) : 'null')
+    } else if (!entry) {
+      console.log('[wheel:node-pane] no board entry and no matching surface. surfaceId:', mySurfaceId, 'knownSurfaces:', Object.keys(SURFACE_TO_NODE_TYPE))
+    }
+
     if (!entry) {
+      console.log('[wheel:node-pane] still no entry, showing Node not found')
       $loading.textContent = 'Node not found.'
       return
     }
 
     const { projectId, nodeId, nodeType, nodeName, nodeConfig, wires } = entry
+    console.log('[wheel:node-pane] rendering node:', nodeName, 'type:', nodeType, 'id:', nodeId)
     activeProjectId = projectId
     nodeData = { id: nodeId, type: nodeType, name: nodeName, config: nodeConfig || {}, wires: wires || [] }
 
@@ -77,20 +108,112 @@ async function initNodePane() {
       pollAgentStatus(projectId, nodeId)
     }
   } catch (err) {
+    console.error('[wheel:node-pane] initNodePane error:', err)
     $loading.textContent = err.message
   }
 }
 
+async function autoCreateNode(paneId, surfaceId) {
+  const nodeType = SURFACE_TO_NODE_TYPE[surfaceId]
+  console.log('[wheel:node-pane] autoCreateNode:', { paneId, surfaceId, nodeType, hasApi: !!paneApi })
+  if (!nodeType || !paneApi) {
+    console.log('[wheel:node-pane] autoCreateNode bail: nodeType=', nodeType, 'paneApi=', !!paneApi)
+    return null
+  }
+
+  const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' }).catch((e) => {
+    console.error('[wheel:node-pane] autoCreateNode failed to get boardState:', e)
+    return null
+  })
+  console.log('[wheel:node-pane] autoCreateNode boardState:', boardResult?.value ? boardResult.value.slice(0, 200) : 'null')
+  if (!boardResult?.value) {
+    $loading.textContent = 'No project open.'
+    return null
+  }
+
+  const board = JSON.parse(boardResult.value)
+  if (!board.projectId) {
+    console.log('[wheel:node-pane] autoCreateNode: no projectId in boardState')
+    $loading.textContent = 'No project open.'
+    return null
+  }
+
+  const existingNames = Object.values(board.paneToNode || {}).map(e => e.nodeName || '')
+  let counter = 1
+  const sep = nodeType === 'table' ? '_' : '-'
+  let name = `${nodeType}${sep}${counter}`
+  while (existingNames.includes(name)) {
+    counter++
+    name = `${nodeType}${sep}${counter}`
+  }
+
+  const defaultConfigs = {
+    agent: { harness: 'claude', system_prompt: '' },
+    ctx: { markdown: '' },
+    table: { columns: [] },
+    endpoint: { method: 'POST', path: `/${name}`, response_mode: 'ack' },
+    script: { language: 'ts', source: '' },
+    mcp: { transport: 'stdio', command: '' },
+    vault: { keys: [] },
+    chest: {},
+    tool: { kind: 'http', source: { format: 'openapi', raw: '', imported_at: new Date().toISOString() }, base_url: 'https://example.com', operations: [] },
+  }
+  const config = defaultConfigs[nodeType] || {}
+  console.log('[wheel:node-pane] autoCreateNode: creating node name:', name, 'type:', nodeType, 'config:', JSON.stringify(config))
+
+  $loading.textContent = `Creating ${nodeType} node...`
+
+  const node = await paneApi.createNode(board.projectId, {
+    name,
+    type: nodeType,
+    position: { x: 0, y: 0 },
+    config,
+  })
+  console.log('[wheel:node-pane] autoCreateNode: API response:', JSON.stringify(node).slice(0, 200))
+
+  if (!node?.id) {
+    console.log('[wheel:node-pane] autoCreateNode: no node.id in response')
+    return null
+  }
+
+  board.paneToNode = board.paneToNode || {}
+  board.paneToNode[paneId] = {
+    nodeId: node.id,
+    nodeType,
+    nodeName: name,
+    nodeConfig: node.config || {},
+    wires: [],
+  }
+  board.nodesById = board.nodesById || {}
+  board.nodesById[node.id] = node
+
+  await paneSendRequest('secrets.set', {
+    key: 'boardState',
+    value: JSON.stringify(board),
+  })
+  console.log('[wheel:node-pane] autoCreateNode: boardState updated, node created successfully')
+
+  return { ...board.paneToNode[paneId], projectId: board.projectId }
+}
+
 async function waitForBoardEntry(paneId) {
+  console.log('[wheel:node-pane] waitForBoardEntry: looking for paneId:', paneId)
   for (let attempt = 0; attempt < 10; attempt++) {
     const result = await paneSendRequest('secrets.get', { key: 'boardState' })
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
+      const allPaneIds = Object.keys(board.paneToNode || {})
+      if (attempt === 0) {
+        console.log('[wheel:node-pane] waitForBoardEntry attempt', attempt, '- boardState has paneIds:', allPaneIds, 'looking for:', paneId, 'found:', !!entry)
+      }
       if (entry) return { ...entry, projectId: board.projectId }
+    } else if (attempt === 0) {
+      console.log('[wheel:node-pane] waitForBoardEntry attempt', attempt, '- no boardState value')
     }
     await new Promise(r => setTimeout(r, 500))
   }
+  console.log('[wheel:node-pane] waitForBoardEntry: gave up after 10 attempts')
   return null
 }
 

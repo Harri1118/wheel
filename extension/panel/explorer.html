@@ -45,40 +45,6 @@
       padding: 8px 0;
     }
 
-    .palette-hint {
-      color: #777;
-      font-size: 11px;
-      font-style: italic;
-      padding: 4px 0 6px;
-    }
-    #palette-list {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-    }
-    .palette-btn {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: none;
-      border: none;
-      color: #ccc;
-      font-size: 13px;
-      padding: 7px 6px;
-      cursor: pointer;
-      text-align: left;
-      border-radius: 4px;
-      width: 100%;
-    }
-    .palette-btn:hover {
-      background: rgba(255,255,255,0.06);
-    }
-    .palette-btn svg {
-      flex-shrink: 0;
-      width: 18px;
-      height: 18px;
-      color: #e08060;
-    }
   </style>
 </head>
 <body>
@@ -112,10 +78,6 @@
         <p id="sync-detail" class="dim"></p>
       </div>
 
-      <div id="node-palette" hidden style="margin-top: 8px;">
-        <div class="palette-hint">Click to place on board</div>
-        <div id="palette-list"></div>
-      </div>
     </div>
   </div>
   <script src="wheel-api.js"></script>

@@ -339,6 +339,10 @@ function listenForCanvasEvents() {
     if (msg.topic === 'command' && msg.payload?.commandId === 'wheel.addNode') {
       showNodeCreationDialog()
     }
+
+    if (msg.topic === 'command' && msg.payload?.commandId?.startsWith('wheel.spawn.')) {
+      handleSpawnCommand(msg.payload.commandId)
+    }
   })
 }
 
@@ -431,6 +435,70 @@ function showNodeCreationDialog() {
   box.appendChild(errorEl)
   dialog.appendChild(box)
   document.body.appendChild(dialog)
+}
+
+// -- spawn menu command handling --
+
+async function handleSpawnCommand(commandId) {
+  const nodeType = commandId.replace('wheel.spawn.', '')
+  if (!NODE_TYPES.includes(nodeType)) return
+
+  if (!boardSync?.activeProjectId || !api) {
+    logCall(commandId, false, 'no project open')
+    return
+  }
+
+  try {
+    const name = generateNodeName(nodeType)
+    const config = NODE_DEFAULTS[nodeType] || {}
+    const node = await api.createNode(boardSync.activeProjectId, {
+      name,
+      type: nodeType,
+      position: { x: 0, y: 0 },
+      config,
+    })
+
+    const result = await sendRequest('canvas.spawnPane', {
+      kind: nodeType === 'agent' ? 'worker' : 'note',
+      title: name,
+      extensionId: 'wheel.wheel',
+      surfaceId: 'wheel-node',
+    })
+
+    if (result?.paneId && node?.id) {
+      boardSync.nodeToPane.set(node.id, {
+        paneId: result.paneId,
+        type: nodeType === 'agent' ? 'worker' : 'note',
+      })
+      boardSync.paneToNode.set(result.paneId, {
+        nodeId: node.id,
+        nodeType,
+      })
+      boardSync.nodesById[node.id] = node
+      await boardSync.persistState()
+      updateSyncStatus()
+    }
+
+    logCall(commandId, true, name)
+  } catch (err) {
+    logCall(commandId, false, err.message)
+  }
+}
+
+function generateNodeName(nodeType) {
+  const existingNames = new Set()
+
+  for (const [, entry] of boardSync.paneToNode) {
+    const node = boardSync.nodesById[entry.nodeId]
+    if (node?.name) existingNames.add(node.name)
+  }
+
+  for (let i = 1; i <= 100; i++) {
+    const candidate = `${nodeType}-${i}`
+    if (!existingNames.has(candidate)) return candidate
+  }
+
+  return `${nodeType}-${Date.now()}`
 }
 
 // -- call log --

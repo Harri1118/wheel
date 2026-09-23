@@ -24,8 +24,13 @@ class WheelApi {
       let msg = `HTTP ${res.status}`
       try {
         const body = await res.json()
+        console.log('[wheel:api] error response body:', JSON.stringify(body))
         if (body?.error?.message) msg = body.error.message
-        else if (body?.error) msg = typeof body.error === 'string' ? body.error : msg
+        else if (typeof body?.error === 'string') msg = body.error
+        else if (typeof body?.message === 'string') msg = body.message
+        else if (body?.errors) msg = JSON.stringify(body.errors)
+        else if (typeof body === 'string') msg = body
+        else msg = `HTTP ${res.status}: ${JSON.stringify(body)}`
       } catch { /* keep default */ }
       throw new Error(msg)
     }

@@ -1,6 +1,7 @@
 {
   "id": "wheel",
-  "version": "0.1.0",
+  "name": "wheel",
+  "version": "0.2.0",
   "publisher": "wheel",
   "displayName": "Wheel",
   "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",
@@ -22,17 +23,28 @@
     },
     "ui": {
       "paneTypes": [
-        {
-          "id": "wheel-node",
-          "title": "Wheel Node",
-          "entrypoint": "panel/node-pane.html"
-        }
+        { "id": "wheel-node",     "title": "Wheel Node",       "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-agent",    "title": "Wheel Agent",      "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-ctx",      "title": "Wheel Context",    "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-table",    "title": "Wheel Table",      "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-endpoint", "title": "Wheel Endpoint",   "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-script",   "title": "Wheel Script",     "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-mcp",      "title": "Wheel MCP Server", "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-vault",    "title": "Wheel Vault",      "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-chest",    "title": "Wheel Chest",      "entrypoint": "panel/node-pane.html" },
+        { "id": "wheel-tool",     "title": "Wheel Tool",       "entrypoint": "panel/node-pane.html" }
       ],
       "explorerSections": [
         {
           "id": "wheel-projects",
           "title": "Wheel Projects",
           "entrypoint": "panel/explorer.html",
+          "position": "bottom"
+        },
+        {
+          "id": "wheel-nodes",
+          "title": "Wheel Nodes",
+          "entrypoint": "panel/palette.html",
           "position": "bottom"
         },
         {
