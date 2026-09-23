@@ -791,6 +791,16 @@ function listenForInspectorEvents() {
         showNode(entry, paneId)
       })
     }
+
+    if (msg.topic === 'canvas.paneRemoved') {
+      const paneId = msg.payload?.paneId
+      if (!paneId || !boardState) return
+
+      const entry = boardState?.paneToNode?.[paneId]
+      if (entry?.nodeId === currentNodeId) {
+        showEmpty('Node removed.')
+      }
+    }
   })
 }
 

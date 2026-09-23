@@ -58,6 +58,7 @@ async function initNodePane() {
     const desc = await paneSendRequest('host.describe')
     console.log('[wheel:node-pane] host.describe result:', JSON.stringify(desc))
     const myPaneId = desc?.paneId
+    myPaneIdGlobal = myPaneId
     const mySurfaceId = desc?.surfaceId
     if (!myPaneId) {
       console.log('[wheel:node-pane] no paneId in describe result')
@@ -556,6 +557,8 @@ function pollAgentStatus(projectId, nodeId) {
   statusPollTimer = setInterval(check, 10000)
 }
 
+let myPaneIdGlobal = null
+
 ext.onMessage((msg) => {
   if (msg.kind !== 'event') return
 
@@ -563,6 +566,22 @@ ext.onMessage((msg) => {
     const { status } = msg.payload || {}
     if (status) updateStatus(status)
   }
+
+  if (msg.topic === 'canvas.paneRemoved') {
+    const removedPaneId = msg.payload?.paneId
+    if (removedPaneId && removedPaneId === myPaneIdGlobal) {
+      handleSelfRemoved()
+    }
+  }
 })
+
+async function handleSelfRemoved() {
+  if (!paneApi || !activeProjectId || !nodeData) return
+  try {
+    await paneApi.deleteNode(activeProjectId, nodeData.id)
+  } catch {
+    // cleanup failed
+  }
+}
 
 initNodePane()

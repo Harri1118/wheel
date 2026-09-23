@@ -121,13 +121,21 @@ async function openProject(projectId) {
     let spawned = 0
     const nodeToPane = []
 
+    const SCALE = 300
+    const OFFSET_X = 100
+    const OFFSET_Y = 100
+
     for (const node of nodes) {
-      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type, 'id:', node.id)
+      const surfaceId = `wheel-${node.type}`
+      const pos = node.position || { x: 0, y: 0 }
+      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type, 'surface:', surfaceId, 'pos:', pos)
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
         extensionId: 'wheel.wheel',
-        surfaceId: 'wheel-node',
+        surfaceId,
+        x: OFFSET_X + pos.x * SCALE,
+        y: OFFSET_Y + pos.y * SCALE,
       })
       console.log('[wheel:explorer] spawnPane result:', JSON.stringify(result))
 
