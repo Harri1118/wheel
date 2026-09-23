@@ -152,11 +152,11 @@ async function autoCreateNode(paneId, surfaceId) {
     ctx: { markdown: '' },
     table: { columns: [] },
     endpoint: { method: 'POST', path: `/${name}`, response_mode: 'ack' },
-    script: { language: 'ts', source: '' },
-    mcp: { transport: 'stdio', command: '' },
+    script: { language: 'ts', source: '// new script' },
+    mcp: { transport: 'stdio', command: 'echo' },
     vault: { keys: [] },
     chest: {},
-    tool: { kind: 'http', source: { format: 'openapi', raw: '', imported_at: new Date().toISOString() }, base_url: 'https://example.com', operations: [] },
+    tool: { kind: 'http', source: { format: 'manual', raw: '', imported_at: new Date().toISOString() }, base_url: 'https://example.com', operations: [] },
   }
   const config = defaultConfigs[nodeType] || {}
   console.log('[wheel:node-pane] autoCreateNode: creating node name:', name, 'type:', nodeType, 'config:', JSON.stringify(config))
