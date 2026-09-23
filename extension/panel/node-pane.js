@@ -230,14 +230,14 @@ function renderAgentConfig(node) {
     'start-with-project',
     'Start with the project',
     'Comes up automatically whenever the container starts.',
-    !!cfg.start_with_project,
+    !!cfg.run_on_startup,
   )
 
   renderToggle(
     'clear-context',
     'Clear context after each turn',
     'Resets the conversation after each message cycle.',
-    !!cfg.clear_context_after_turn,
+    !!cfg.ephemeral_context,
   )
 }
 
@@ -382,8 +382,8 @@ async function saveAgentConfig() {
     harness: harness || undefined,
     model: model || undefined,
     system_prompt: systemPrompt || undefined,
-    start_with_project: startWithProject,
-    clear_context_after_turn: clearContext,
+    run_on_startup: startWithProject,
+    ephemeral_context: clearContext,
   }
 
   if (saveBtn) saveBtn.disabled = true
