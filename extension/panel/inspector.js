@@ -486,9 +486,54 @@ async function updateBoardStateEntry(entry) {
   }
 }
 
-// ---- Wires section ----
+// ---- Wire matrix (mirrors wheel-core/src/wire.rs) ----
 
-const WIRE_TYPES = ['read', 'write', 'send']
+const WIRE_MATRIX = [
+  ['agent', 'send', 'agent'],
+  ['agent', 'read', 'ctx'],
+  ['agent', 'write', 'ctx'],
+  ['agent', 'read', 'table'],
+  ['agent', 'write', 'table'],
+  ['agent', 'read', 'vault'],
+  ['agent', 'read', 'chest'],
+  ['agent', 'write', 'chest'],
+  ['agent', 'read', 'script'],
+  ['agent', 'read', 'mcp'],
+  ['agent', 'read', 'tool'],
+  ['ctx', 'send', 'agent'],
+  ['endpoint', 'send', 'agent'],
+  ['endpoint', 'write', 'table'],
+  ['endpoint', 'send', 'script'],
+  ['endpoint', 'read', 'vault'],
+  ['script', 'send', 'agent'],
+  ['script', 'read', 'ctx'],
+  ['script', 'write', 'ctx'],
+  ['script', 'read', 'table'],
+  ['script', 'write', 'table'],
+  ['script', 'read', 'chest'],
+  ['script', 'write', 'chest'],
+  ['script', 'read', 'vault'],
+  ['script', 'read', 'tool'],
+  ['tool', 'read', 'vault'],
+]
+
+function wireAllowed(fromType, wireType, toType) {
+  return WIRE_MATRIX.some(([f, w, t]) => f === fromType && w === wireType && t === toType)
+}
+
+function allowedWireTypes(fromType, toType) {
+  return ['read', 'write', 'send'].filter(w => wireAllowed(fromType, w, toType))
+}
+
+function allowedTargets(fromType) {
+  const targets = new Set()
+  for (const [f, , t] of WIRE_MATRIX) {
+    if (f === fromType) targets.add(t)
+  }
+  return targets
+}
+
+// ---- Wires section ----
 
 function renderWiresSection(entry, paneId) {
   const section = document.createElement('div')
@@ -542,6 +587,27 @@ function renderWiresSection(entry, paneId) {
 
   section.appendChild(wireList)
 
+  const validTargets = allowedTargets(entry.nodeType)
+  const peers = []
+  if (boardState?.paneToNode) {
+    for (const [, e] of Object.entries(boardState.paneToNode)) {
+      if (e.nodeId === entry.nodeId) continue
+      if (!validTargets.has(e.nodeType)) continue
+      peers.push(e)
+    }
+  }
+
+  if (peers.length === 0) {
+    if (validTargets.size === 0) {
+      const hint = document.createElement('div')
+      hint.className = 'wire-empty'
+      hint.textContent = `${entry.nodeType} nodes have no outgoing wires.`
+      section.appendChild(hint)
+    }
+    $content.appendChild(section)
+    return
+  }
+
   const addRow = document.createElement('div')
   addRow.className = 'wire-add-row'
 
@@ -554,27 +620,42 @@ function renderWiresSection(entry, paneId) {
   defaultOpt.textContent = 'Target node...'
   peerSelect.appendChild(defaultOpt)
 
-  if (boardState?.paneToNode) {
-    for (const [, e] of Object.entries(boardState.paneToNode)) {
-      if (e.nodeId === entry.nodeId) continue
-      const opt = document.createElement('option')
-      opt.value = e.nodeId
-      opt.textContent = `${e.nodeName} (${e.nodeType})`
-      peerSelect.appendChild(opt)
-    }
+  for (const e of peers) {
+    const opt = document.createElement('option')
+    opt.value = e.nodeId
+    opt.textContent = `${e.nodeName} (${e.nodeType})`
+    opt.dataset.nodeType = e.nodeType
+    peerSelect.appendChild(opt)
   }
   addRow.appendChild(peerSelect)
 
   const typeSelect = document.createElement('select')
   typeSelect.className = 'field-select wire-type-select'
   typeSelect.id = 'wire-type-select'
-  for (const t of WIRE_TYPES) {
-    const opt = document.createElement('option')
-    opt.value = t
-    opt.textContent = t
-    typeSelect.appendChild(opt)
-  }
   addRow.appendChild(typeSelect)
+
+  function updateTypeOptions() {
+    typeSelect.textContent = ''
+    const selectedOpt = peerSelect.selectedOptions[0]
+    const targetType = selectedOpt?.dataset?.nodeType
+    if (!targetType) {
+      const placeholder = document.createElement('option')
+      placeholder.value = ''
+      placeholder.textContent = 'type...'
+      typeSelect.appendChild(placeholder)
+      return
+    }
+    const types = allowedWireTypes(entry.nodeType, targetType)
+    for (const t of types) {
+      const opt = document.createElement('option')
+      opt.value = t
+      opt.textContent = t
+      typeSelect.appendChild(opt)
+    }
+  }
+
+  peerSelect.addEventListener('change', updateTypeOptions)
+  updateTypeOptions()
 
   const addBtn = document.createElement('button')
   addBtn.className = 'btn-sm primary'
