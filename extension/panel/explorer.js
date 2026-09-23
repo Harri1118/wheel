@@ -31,6 +31,7 @@ const $syncArea = document.getElementById('sync-area')
 const $syncDot = document.getElementById('sync-dot')
 const $syncLabel = document.getElementById('sync-label')
 const $syncDetail = document.getElementById('sync-detail')
+const $nodeList = document.getElementById('node-list')
 
 async function loadExplorerSecrets() {
   const [urlResult, tokenResult] = await Promise.all([
@@ -284,6 +285,60 @@ async function handlePaneRemoved(paneId) {
   }
 }
 
+function renderNodeList(board) {
+  $nodeList.textContent = ''
+  const paneToNode = board?.paneToNode || {}
+  const entries = Object.entries(paneToNode)
+
+  for (const [paneId, entry] of entries) {
+    const li = document.createElement('li')
+    li.className = 'node-item'
+
+    const tag = document.createElement('span')
+    tag.className = 'node-type-tag'
+    tag.textContent = entry.nodeType || '?'
+    li.appendChild(tag)
+
+    const name = document.createElement('span')
+    name.className = 'node-item-name'
+    name.textContent = entry.nodeName || entry.nodeId
+    li.appendChild(name)
+
+    const del = document.createElement('button')
+    del.className = 'node-delete-btn'
+    del.textContent = '\u00d7'
+    del.title = 'Delete node'
+    del.addEventListener('click', () => deleteNodeFromExplorer(paneId, entry, board.projectId))
+    li.appendChild(del)
+
+    $nodeList.appendChild(li)
+  }
+}
+
+async function deleteNodeFromExplorer(paneId, entry, projectId) {
+  try {
+    if (explorerApi && projectId && entry.nodeId) {
+      await explorerApi.deleteNode(projectId, entry.nodeId).catch(() => {})
+    }
+
+    await explorerSendRequest('canvas.killPane', { paneId }).catch(() => {})
+
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (boardResult?.value) {
+      const board = JSON.parse(boardResult.value)
+      delete board.paneToNode[paneId]
+      await explorerSendRequest('secrets.set', {
+        key: 'boardState',
+        value: JSON.stringify(board),
+      })
+    }
+
+    refreshSyncStatus()
+  } catch {
+    // delete failed — not fatal
+  }
+}
+
 async function refreshSyncStatus() {
   try {
     const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
@@ -305,6 +360,7 @@ async function refreshSyncStatus() {
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'
     $syncDetail.textContent = `${nodeCount} node${nodeCount === 1 ? '' : 's'} on canvas`
+    renderNodeList(board)
 
   } catch {
     // state load failed — not fatal

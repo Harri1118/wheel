@@ -45,6 +45,48 @@
       padding: 8px 0;
     }
 
+    #node-list {
+      list-style: none;
+      padding: 0;
+      margin: 6px 0 0;
+    }
+    .node-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+    .node-type-tag {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      font-weight: 600;
+      color: #888;
+      background: #222;
+      padding: 1px 4px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .node-item-name {
+      flex: 1;
+      color: #ccc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .node-delete-btn {
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .node-delete-btn:hover { color: #c66; }
+
   </style>
 </head>
 <body>
@@ -76,6 +118,7 @@
           <span id="sync-label">Not synced</span>
         </div>
         <p id="sync-detail" class="dim"></p>
+        <ul id="node-list"></ul>
       </div>
 
     </div>
