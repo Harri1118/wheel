@@ -1,0 +1,22 @@
+name: Publish Extension to AgentGrid Marketplace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agentgrid-extension.json"
+      - "extension/**"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npx @agentgrid/cli publish --token "$AGX_TOKEN"
+        env:
+          AGX_TOKEN: ${{ secrets.AGX_TOKEN }}

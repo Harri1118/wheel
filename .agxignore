@@ -1,0 +1,16 @@
+# Only ship the extension/ dir and manifest
+crates
+docker
+docs
+infra
+qa
+redteam
+web
+Cargo.toml
+Cargo.lock
+Makefile
+LICENSE
+README.md
+.dockerignore
+.gitignore
+.railway-config-pull-94844
