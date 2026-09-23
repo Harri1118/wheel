@@ -162,10 +162,148 @@ async function openProject(projectId) {
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'
     $syncDetail.textContent = `${spawned} pane${spawned === 1 ? '' : 's'} on canvas`
+
+    showPaletteIfSynced(boardState)
+    await syncWireConnections(projectId)
   } catch (err) {
     $syncDot.className = 'dot err'
     $syncLabel.textContent = 'Error'
     $syncDetail.textContent = err.message
+  }
+}
+
+const $nodePalette = document.getElementById('node-palette')
+const $paletteGrid = document.getElementById('palette-grid')
+
+const NODE_TYPES = [
+  { type: 'agent',    icon: '\u{1F916}', label: 'Agent' },
+  { type: 'ctx',      icon: '\u{1F4C4}', label: 'Context' },
+  { type: 'table',    icon: '\u{1F4CA}', label: 'Table' },
+  { type: 'endpoint', icon: '\u{1F50C}', label: 'Endpoint' },
+  { type: 'script',   icon: '\u26A1',     label: 'Script' },
+  { type: 'mcp',      icon: '\u{1F527}', label: 'MCP' },
+  { type: 'vault',    icon: '\u{1F510}', label: 'Vault' },
+  { type: 'chest',    icon: '\u{1F4E6}', label: 'Chest' },
+  { type: 'tool',     icon: '\u{1F6E0}', label: 'Tool' },
+]
+
+function buildPalette() {
+  $paletteGrid.textContent = ''
+
+  for (const nt of NODE_TYPES) {
+    const btn = document.createElement('button')
+    btn.className = 'palette-btn'
+
+    const iconSpan = document.createElement('span')
+    iconSpan.className = 'palette-icon'
+    iconSpan.textContent = nt.icon
+
+    const labelSpan = document.createElement('span')
+    labelSpan.className = 'palette-label'
+    labelSpan.textContent = nt.label
+
+    btn.appendChild(iconSpan)
+    btn.appendChild(labelSpan)
+    btn.addEventListener('click', () => spawnNodeFromPalette(nt.type, nt.label))
+    $paletteGrid.appendChild(btn)
+  }
+}
+
+async function spawnNodeFromPalette(type, defaultLabel) {
+  const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+  if (!boardResult?.value) return
+
+  const board = JSON.parse(boardResult.value)
+  if (!board.projectId || !explorerApi) return
+
+  const name = prompt(`Name for new ${defaultLabel} node:`, `${defaultLabel} ${Date.now() % 1000}`)
+  if (!name) return
+
+  try {
+    const node = await explorerApi.createNode(board.projectId, { type, name, config: {} })
+
+    const result = await explorerSendRequest('canvas.spawnPane', {
+      kind: 'note',
+      title: name,
+      extensionId: 'wheel.wheel',
+      surfaceId: 'wheel-node',
+    })
+
+    if (result?.paneId && node?.id) {
+      board.paneToNode = board.paneToNode || {}
+      board.paneToNode[result.paneId] = {
+        nodeId: node.id,
+        nodeType: type,
+        nodeName: name,
+        nodeConfig: node.config || {},
+        wires: [],
+      }
+      board.nodesById = board.nodesById || {}
+      board.nodesById[node.id] = node
+
+      await explorerSendRequest('secrets.set', {
+        key: 'boardState',
+        value: JSON.stringify(board),
+      })
+
+      await syncWireConnections(board.projectId)
+      refreshSyncStatus()
+    }
+  } catch (err) {
+    $syncDot.className = 'dot err'
+    $syncLabel.textContent = 'Error'
+    $syncDetail.textContent = err.message
+  }
+}
+
+function showPaletteIfSynced(boardState) {
+  if (boardState?.projectId && Object.keys(boardState.paneToNode || {}).length > 0) {
+    $nodePalette.hidden = false
+  } else {
+    $nodePalette.hidden = true
+  }
+}
+
+async function syncWireConnections(projectId) {
+  if (!explorerApi || !projectId) return
+
+  try {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    const paneToNode = board.paneToNode || {}
+
+    const apiBoard = await explorerApi.getBoard(projectId)
+    const wires = apiBoard.wires || []
+
+    const nodeIdToPane = {}
+    for (const [paneId, entry] of Object.entries(paneToNode)) {
+      nodeIdToPane[entry.nodeId] = paneId
+    }
+
+    const paneAssociations = {}
+    for (const paneId of Object.keys(paneToNode)) {
+      paneAssociations[paneId] = new Set()
+    }
+
+    for (const wire of wires) {
+      const fromPane = nodeIdToPane[wire.from]
+      const toPane = nodeIdToPane[wire.to]
+
+      if (fromPane && toPane) {
+        paneAssociations[fromPane]?.add(toPane)
+        paneAssociations[toPane]?.add(fromPane)
+      }
+    }
+
+    for (const [paneId, peers] of Object.entries(paneAssociations)) {
+      const associatedPaneIds = [...peers]
+
+      await explorerSendRequest('canvas.updatePane', { paneId, associatedPaneIds }).catch(() => {})
+    }
+  } catch {
+    // wire sync is best-effort
   }
 }
 
@@ -214,6 +352,7 @@ async function handlePaneRemoved(paneId) {
     })
 
     refreshSyncStatus()
+    await syncWireConnections(board.projectId)
   } catch {
     // cleanup failed — not fatal
   }
@@ -221,17 +360,29 @@ async function handlePaneRemoved(paneId) {
 
 async function refreshSyncStatus() {
   try {
-    const state = await explorerSendRequest('pane.loadState')
-    if (!state?.data?.projectId) {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+
+    if (!boardResult?.value) {
       $syncArea.hidden = true
+      showPaletteIfSynced(null)
+      return
+    }
+
+    const board = JSON.parse(boardResult.value)
+
+    if (!board.projectId) {
+      $syncArea.hidden = true
+      showPaletteIfSynced(null)
       return
     }
 
     $syncArea.hidden = false
-    const nodeCount = state.data.nodeToPane?.length ?? 0
+    const nodeCount = Object.keys(board.paneToNode || {}).length
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'
     $syncDetail.textContent = `${nodeCount} node${nodeCount === 1 ? '' : 's'} on canvas`
+
+    showPaletteIfSynced(board)
   } catch {
     // state load failed — not fatal
   }
@@ -258,6 +409,7 @@ async function initExplorer() {
     $notConfigured.hidden = true
     $configured.hidden = false
 
+    buildPalette()
     await refreshProjects()
     await refreshSyncStatus()
     listenForExplorerEvents()
