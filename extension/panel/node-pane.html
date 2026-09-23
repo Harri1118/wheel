@@ -11,7 +11,8 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #1a1a1a;
       color: #ddd;
-      overflow: hidden;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .node-card {
@@ -19,7 +20,6 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      height: 100%;
     }
 
     .node-header {
@@ -46,6 +46,7 @@
     .type-badge.script { background: #2a3a3a; color: #6aa; }
     .type-badge.mcp { background: #3a2a3a; color: #a6a; }
     .type-badge.vault { background: #2a2a2a; color: #888; }
+    .type-badge.chest { background: #2a2a2a; color: #888; }
     .type-badge.tool { background: #3a2a2a; color: #a66; }
 
     .node-name {
@@ -67,6 +68,7 @@
       height: 6px;
       border-radius: 50%;
       background: #555;
+      flex-shrink: 0;
     }
 
     .status-dot.running { background: #5a5; }
@@ -74,8 +76,29 @@
     .status-dot.stopped { background: #555; }
     .status-dot.error { background: #e55; }
 
-    .harness-label {
+    .status-actions {
       margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+
+    .btn-sm {
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 3px;
+      padding: 2px 8px;
+      color: #aaa;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .btn-sm:hover { background: #333; color: #ddd; }
+    .btn-sm:disabled { opacity: 0.4; cursor: default; }
+    .btn-sm.primary { background: #2a3a2a; border-color: #3a4a3a; color: #8b8; }
+    .btn-sm.primary:hover { background: #3a4a3a; }
+    .btn-sm.danger { color: #a66; }
+    .btn-sm.danger:hover { color: #c88; }
+
+    .harness-label {
       background: #252525;
       padding: 1px 6px;
       border-radius: 3px;
@@ -104,6 +127,149 @@
       color: #666;
       font-size: 12px;
       padding: 16px;
+    }
+
+    .separator {
+      border: none;
+      border-top: 1px solid #2a2a2a;
+      margin: 4px 0;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: #888;
+      font-weight: 500;
+    }
+
+    .field-input {
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #ddd;
+      font-size: 12px;
+      outline: none;
+      width: 100%;
+    }
+    .field-input:focus { border-color: #555; }
+
+    .field-select {
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #ddd;
+      font-size: 12px;
+      outline: none;
+      width: 100%;
+    }
+    .field-select:focus { border-color: #555; }
+
+    .field-textarea {
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: #ddd;
+      font-size: 12px;
+      outline: none;
+      width: 100%;
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    .field-textarea:focus { border-color: #555; }
+
+    .field-hint {
+      font-size: 10px;
+      color: #555;
+    }
+
+    .save-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .save-status {
+      font-size: 11px;
+      color: #666;
+    }
+    .save-status.ok { color: #5a5; }
+    .save-status.err { color: #e55; }
+
+    .toggle-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #333;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 2px;
+      top: 2px;
+      background: #888;
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: #2a4a2a;
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(14px);
+      background: #6a6;
+    }
+
+    .toggle-text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .toggle-label {
+      font-size: 12px;
+      color: #ccc;
+    }
+
+    .toggle-desc {
+      font-size: 10px;
+      color: #555;
     }
   </style>
 </head>
