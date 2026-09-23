@@ -45,35 +45,39 @@
       padding: 8px 0;
     }
 
-    #palette-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 4px;
-      margin-top: 6px;
+    .palette-hint {
+      color: #777;
+      font-size: 11px;
+      font-style: italic;
+      padding: 4px 0 6px;
+    }
+    #palette-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
     }
     .palette-btn {
-      background: #1e1e1e;
-      border: 1px solid #333;
-      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: none;
+      border: none;
       color: #ccc;
-      font-size: 11px;
-      padding: 6px 4px;
+      font-size: 13px;
+      padding: 7px 6px;
       cursor: pointer;
-      text-align: center;
-      line-height: 1.3;
+      text-align: left;
+      border-radius: 4px;
+      width: 100%;
     }
     .palette-btn:hover {
-      background: #2a2a2a;
-      border-color: #555;
+      background: rgba(255,255,255,0.06);
     }
-    .palette-icon {
-      display: block;
-      font-size: 16px;
-      margin-bottom: 2px;
-    }
-    .palette-label {
-      display: block;
-      font-size: 10px;
+    .palette-btn svg {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      color: #e08060;
     }
   </style>
 </head>
@@ -109,10 +113,8 @@
       </div>
 
       <div id="node-palette" hidden style="margin-top: 8px;">
-        <div class="section-header">
-          <h3>Add Node</h3>
-        </div>
-        <div id="palette-grid"></div>
+        <div class="palette-hint">Click to place on board</div>
+        <div id="palette-list"></div>
       </div>
     </div>
   </div>

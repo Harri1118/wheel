@@ -173,39 +173,44 @@ async function openProject(projectId) {
 }
 
 const $nodePalette = document.getElementById('node-palette')
-const $paletteGrid = document.getElementById('palette-grid')
+const $paletteList = document.getElementById('palette-list')
 
 const NODE_TYPES = [
-  { type: 'agent',    icon: '\u{1F916}', label: 'Agent' },
-  { type: 'ctx',      icon: '\u{1F4C4}', label: 'Context' },
-  { type: 'table',    icon: '\u{1F4CA}', label: 'Table' },
-  { type: 'endpoint', icon: '\u{1F50C}', label: 'Endpoint' },
-  { type: 'script',   icon: '\u26A1',     label: 'Script' },
-  { type: 'mcp',      icon: '\u{1F527}', label: 'MCP' },
-  { type: 'vault',    icon: '\u{1F510}', label: 'Vault' },
-  { type: 'chest',    icon: '\u{1F4E6}', label: 'Chest' },
-  { type: 'tool',     icon: '\u{1F6E0}', label: 'Tool' },
+  { type: 'agent',    label: 'Agent',      svg: '<path d="M9 2a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-1v1a1 1 0 0 1-2 0v-1H8v1a1 1 0 0 1-2 0v-1H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2zm0 2a.5.5 0 0 0-.5.5V5h1V4.5A.5.5 0 0 0 9 4zM7.5 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 11h4" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/>' },
+  { type: 'ctx',      label: 'Context',    svg: '<rect x="4" y="2" width="10" height="14" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M7 6h4M7 9h4M7 12h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>' },
+  { type: 'table',    label: 'Table',      svg: '<rect x="2" y="3" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 7h14M2 11h14M7 7v8M11 7v8" stroke="currentColor" stroke-width="1.2"/>' },
+  { type: 'endpoint', label: 'Endpoint',   svg: '<path d="M4 9h8m0 0l-3-3m3 3l-3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5v8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>' },
+  { type: 'script',   label: 'Script',     svg: '<rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M7 7l-2 2 2 2M11 7l2 2-2 2" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' },
+  { type: 'mcp',      label: 'MCP server', svg: '<circle cx="9" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M9 7.5V10m-3 2l3-2 3 2" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="13" r="1.2" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="12" cy="13" r="1.2" stroke="currentColor" stroke-width="1.2" fill="none"/>' },
+  { type: 'vault',    label: 'Vault',      svg: '<rect x="3" y="6" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6 6V5a3 3 0 0 1 6 0v1" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/>' },
+  { type: 'chest',    label: 'Chest',      svg: '<rect x="2" y="5" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 9h14" stroke="currentColor" stroke-width="1.2"/><rect x="7.5" y="7.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M5 5l1-3h6l1 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/>' },
+  { type: 'tool',     label: 'Tool',       svg: '<path d="M5.5 12.5l5-5M14 5.5a3 3 0 0 0-3-3l1.5 1.5L11 5.5 9.5 4A3 3 0 0 0 13 8l-5 5a1.5 1.5 0 0 0 2.1 2.1l5-5A3 3 0 0 0 14 5.5z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' },
 ]
 
 function buildPalette() {
-  $paletteGrid.textContent = ''
+  $paletteList.textContent = ''
 
   for (const nt of NODE_TYPES) {
     const btn = document.createElement('button')
     btn.className = 'palette-btn'
 
-    const iconSpan = document.createElement('span')
-    iconSpan.className = 'palette-icon'
-    iconSpan.textContent = nt.icon
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('viewBox', '0 0 18 18')
+    svg.setAttribute('width', '18')
+    svg.setAttribute('height', '18')
+    svg.setAttribute('aria-hidden', 'true')
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    g.innerHTML = nt.svg
+    svg.appendChild(g)
 
     const labelSpan = document.createElement('span')
-    labelSpan.className = 'palette-label'
     labelSpan.textContent = nt.label
 
-    btn.appendChild(iconSpan)
+    btn.appendChild(svg)
     btn.appendChild(labelSpan)
     btn.addEventListener('click', () => spawnNodeFromPalette(nt.type, nt.label))
-    $paletteGrid.appendChild(btn)
+    $paletteList.appendChild(btn)
   }
 }
 
