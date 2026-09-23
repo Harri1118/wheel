@@ -262,11 +262,7 @@ async function spawnNodeFromPalette(type, defaultLabel) {
 }
 
 function showPaletteIfSynced(boardState) {
-  if (boardState?.projectId && Object.keys(boardState.paneToNode || {}).length > 0) {
-    $nodePalette.hidden = false
-  } else {
-    $nodePalette.hidden = true
-  }
+  $nodePalette.hidden = !boardState?.projectId
 }
 
 async function syncWireConnections(projectId) {
