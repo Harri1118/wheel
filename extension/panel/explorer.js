@@ -351,9 +351,34 @@ async function refreshSyncStatus() {
   }
 }
 
+async function stopProject() {
+  try {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    const paneIds = Object.keys(board.paneToNode || {})
+
+    for (const pid of paneIds) {
+      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
+    }
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify({ projectId: null, paneToNode: {}, nodesById: {} }),
+    })
+
+    $syncArea.hidden = true
+    $nodeList.textContent = ''
+  } catch {
+    // stop failed — not fatal
+  }
+}
+
 document.getElementById('btn-refresh').addEventListener('click', initExplorer)
 document.getElementById('btn-retry')?.addEventListener('click', initExplorer)
 document.getElementById('btn-sync')?.addEventListener('click', syncFromWheel)
+document.getElementById('btn-stop')?.addEventListener('click', stopProject)
 
 let boardSyncTimer = null
 

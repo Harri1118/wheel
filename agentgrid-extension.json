@@ -1,7 +1,7 @@
 {
   "id": "wheel",
   "name": "wheel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "wheel",
   "displayName": "Wheel",
   "description": "Orchestrate AI agent boards on Wheel — create nodes, wire them, control agents, query tables, and manage projects from AgentGrid.",

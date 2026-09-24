@@ -12,10 +12,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AGX_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Bump patch version
+        run: |
+          bump() {
+            local file="$1"
+            local cur=$(node -p "require('./$file').version")
+            local major=$(echo "$cur" | cut -d. -f1)
+            local minor=$(echo "$cur" | cut -d. -f2)
+            local patch=$(echo "$cur" | cut -d. -f3)
+            local next="$major.$minor.$((patch + 1))"
+            node -e "
+              const fs = require('fs');
+              const j = JSON.parse(fs.readFileSync('$file','utf8'));
+              j.version = '$next';
+              fs.writeFileSync('$file', JSON.stringify(j, null, 2) + '\n');
+            "
+            echo "$next"
+          }
+          NEW_VERSION=$(bump agentgrid-extension.json)
+          bump extension/agentgrid-extension.json > /dev/null
+          echo "Bumped to $NEW_VERSION"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add agentgrid-extension.json extension/agentgrid-extension.json
+          git diff --cached --quiet && echo "No version change" && exit 0
+          git commit -m "chore: bump extension to $(node -p "require('./agentgrid-extension.json').version") [skip ci]"
+          git push
 
       - run: npx @agentgrid/cli publish --token "$AGX_TOKEN"
         env:
