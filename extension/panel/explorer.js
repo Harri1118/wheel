@@ -119,17 +119,16 @@ async function openProject(projectId) {
     const nodesById = {}
     for (const n of nodes) nodesById[n.id] = n
 
-    let spawned = 0
-    const nodeToPane = []
-
     const SCALE = 300
     const OFFSET_X = 100
     const OFFSET_Y = 100
 
+    const boardState = { projectId, paneToNode: {}, nodesById }
+
     for (const node of nodes) {
       const surfaceId = `wheel-${node.type}`
       const pos = node.position || { x: 0, y: 0 }
-      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type, 'surface:', surfaceId, 'pos:', pos)
+      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type)
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
@@ -138,44 +137,32 @@ async function openProject(projectId) {
         x: OFFSET_X + pos.x * SCALE,
         y: OFFSET_Y + pos.y * SCALE,
       })
-      console.log('[wheel:explorer] spawnPane result:', JSON.stringify(result))
 
       if (result?.paneId) {
-        nodeToPane.push([node.id, { paneId: result.paneId, type: node.type === 'agent' ? 'worker' : 'note' }])
-      }
+        const nodeWires = wires
+          .filter(w => w.from === node.id || w.to === node.id)
+          .map(w => ({
+            type: w.type,
+            direction: w.from === node.id ? 'outgoing' : 'incoming',
+            peerName: (nodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
+            peerType: (nodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
+          }))
+        boardState.paneToNode[result.paneId] = {
+          nodeId: node.id,
+          nodeType: node.type,
+          nodeName: node.name,
+          nodeConfig: node.config,
+          wires: nodeWires,
+        }
 
-      spawned++
-    }
-
-    const paneToNode = {}
-    for (const [nid, entry] of nodeToPane) {
-      const n = nodesById[nid]
-      const nodeWires = wires
-        .filter(w => w.from === nid || w.to === nid)
-        .map(w => ({
-          type: w.type,
-          direction: w.from === nid ? 'outgoing' : 'incoming',
-          peerName: (nodesById[w.from === nid ? w.to : w.from] || {}).name || 'unknown',
-          peerType: (nodesById[w.from === nid ? w.to : w.from] || {}).type || 'unknown',
-        }))
-      paneToNode[entry.paneId] = {
-        nodeId: nid,
-        nodeType: n?.type,
-        nodeName: n?.name,
-        nodeConfig: n?.config,
-        wires: nodeWires,
+        await explorerSendRequest('secrets.set', {
+          key: 'boardState',
+          value: JSON.stringify(boardState),
+        })
       }
     }
 
-    const boardState = { projectId, paneToNode, nodesById }
-    console.log('[wheel:explorer] saving boardState, paneToNode keys:', Object.keys(paneToNode))
-    console.log('[wheel:explorer] boardState:', JSON.stringify(boardState).slice(0, 500))
-
-    await explorerSendRequest('secrets.set', {
-      key: 'boardState',
-      value: JSON.stringify(boardState),
-    })
-    console.log('[wheel:explorer] boardState saved successfully')
+    console.log('[wheel:explorer] boardState saved, panes:', Object.keys(boardState.paneToNode).length)
 
     await syncWireConnections(projectId)
     await refreshSyncStatus()
@@ -438,10 +425,14 @@ async function syncFromWheel() {
           nodeConfig: node.config,
           wires: nodeWires,
         }
+
+        await explorerSendRequest('secrets.set', {
+          key: 'boardState',
+          value: JSON.stringify(board),
+        })
       }
     }
 
-    board.paneToNode = paneToNode
     board.nodesById = remoteNodesById
 
     await explorerSendRequest('secrets.set', {
