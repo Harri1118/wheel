@@ -21,7 +21,7 @@ function paneSendRequest(method, params) {
     const timeout = setTimeout(() => {
       cleanup()
       reject(new Error('timeout'))
-    }, 8000)
+    }, 3000)
     const cleanup = ext.onMessage((msg) => {
       if (msg.kind !== 'response' || msg.id !== id) return
       clearTimeout(timeout)
@@ -55,55 +55,45 @@ const SURFACE_TO_NODE_TYPE = {
 async function initNodePane() {
   console.log('[wheel:node-pane] initNodePane starting')
   try {
-    const desc = await paneSendRequest('host.describe')
-    console.log('[wheel:node-pane] host.describe result:', JSON.stringify(desc))
-    const myPaneId = desc?.paneId
-    myPaneIdGlobal = myPaneId
-    const mySurfaceId = desc?.surfaceId
-    if (!myPaneId) {
-      console.log('[wheel:node-pane] no paneId in describe result')
-      $loading.textContent = 'No pane identity.'
-      return
-    }
-    console.log('[wheel:node-pane] paneId:', myPaneId, 'surfaceId:', mySurfaceId)
-
-    const [urlResult, tokenResult] = await Promise.all([
+    const [desc, urlResult, tokenResult] = await Promise.all([
+      paneSendRequest('host.describe'),
       paneSendRequest('secrets.get', { key: 'apiUrl' }),
       paneSendRequest('secrets.get', { key: 'apiToken' }),
     ])
 
+    const myPaneId = desc?.paneId
+    myPaneIdGlobal = myPaneId
+    const mySurfaceId = desc?.surfaceId
+    if (!myPaneId) {
+      $loading.textContent = 'No pane identity.'
+      return
+    }
+
     const apiUrl = urlResult?.value || DEFAULT_API_URL
     const apiToken = tokenResult?.value || ''
-    console.log('[wheel:node-pane] apiUrl:', apiUrl, 'hasToken:', !!apiToken)
 
     if (apiToken) {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
-    console.log('[wheel:node-pane] waiting for board entry...')
     let entry = await waitForBoardEntry(myPaneId)
-    console.log('[wheel:node-pane] waitForBoardEntry result:', entry ? JSON.stringify(entry).slice(0, 200) : 'null')
 
     if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
-      console.log('[wheel:node-pane] no board entry, attempting autoCreateNode for surface:', mySurfaceId, '-> type:', SURFACE_TO_NODE_TYPE[mySurfaceId])
       entry = await autoCreateNode(myPaneId, mySurfaceId)
-      console.log('[wheel:node-pane] autoCreateNode result:', entry ? JSON.stringify(entry).slice(0, 200) : 'null')
-    } else if (!entry) {
-      console.log('[wheel:node-pane] no board entry and no matching surface. surfaceId:', mySurfaceId, 'knownSurfaces:', Object.keys(SURFACE_TO_NODE_TYPE))
     }
 
     if (!entry) {
-      console.log('[wheel:node-pane] still no entry, showing Node not found')
       $loading.textContent = 'Node not found.'
       return
     }
 
     const { projectId, nodeId, nodeType, nodeName, nodeConfig, wires } = entry
-    console.log('[wheel:node-pane] rendering node:', nodeName, 'type:', nodeType, 'id:', nodeId)
     activeProjectId = projectId
+    myNodeType = nodeType
     nodeData = { id: nodeId, type: nodeType, name: nodeName, config: nodeConfig || {}, wires: wires || [] }
 
     renderNode(nodeData)
+    renderSockets(nodeType)
 
     if (paneApi && nodeType === 'agent') {
       pollAgentStatus(projectId, nodeId)
@@ -116,17 +106,9 @@ async function initNodePane() {
 
 async function autoCreateNode(paneId, surfaceId) {
   const nodeType = SURFACE_TO_NODE_TYPE[surfaceId]
-  console.log('[wheel:node-pane] autoCreateNode:', { paneId, surfaceId, nodeType, hasApi: !!paneApi })
-  if (!nodeType || !paneApi) {
-    console.log('[wheel:node-pane] autoCreateNode bail: nodeType=', nodeType, 'paneApi=', !!paneApi)
-    return null
-  }
+  if (!nodeType || !paneApi) return null
 
-  const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' }).catch((e) => {
-    console.error('[wheel:node-pane] autoCreateNode failed to get boardState:', e)
-    return null
-  })
-  console.log('[wheel:node-pane] autoCreateNode boardState:', boardResult?.value ? boardResult.value.slice(0, 200) : 'null')
+  const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
   if (!boardResult?.value) {
     $loading.textContent = 'No project open.'
     return null
@@ -134,7 +116,6 @@ async function autoCreateNode(paneId, surfaceId) {
 
   const board = JSON.parse(boardResult.value)
   if (!board.projectId) {
-    console.log('[wheel:node-pane] autoCreateNode: no projectId in boardState')
     $loading.textContent = 'No project open.'
     return null
   }
@@ -160,7 +141,6 @@ async function autoCreateNode(paneId, surfaceId) {
     tool: { kind: 'http', source: { format: 'manual', raw: '', imported_at: new Date().toISOString() }, base_url: 'https://example.com', operations: [] },
   }
   const config = defaultConfigs[nodeType] || {}
-  console.log('[wheel:node-pane] autoCreateNode: creating node name:', name, 'type:', nodeType, 'config:', JSON.stringify(config))
 
   $loading.textContent = `Creating ${nodeType} node...`
 
@@ -170,12 +150,7 @@ async function autoCreateNode(paneId, surfaceId) {
     position: { x: 0, y: 0 },
     config,
   })
-  console.log('[wheel:node-pane] autoCreateNode: API response:', JSON.stringify(node).slice(0, 200))
-
-  if (!node?.id) {
-    console.log('[wheel:node-pane] autoCreateNode: no node.id in response')
-    return null
-  }
+  if (!node?.id) return null
 
   board.paneToNode = board.paneToNode || {}
   board.paneToNode[paneId] = {
@@ -192,29 +167,20 @@ async function autoCreateNode(paneId, surfaceId) {
     key: 'boardState',
     value: JSON.stringify(board),
   })
-  console.log('[wheel:node-pane] autoCreateNode: boardState updated, node created successfully')
 
   return { ...board.paneToNode[paneId], projectId: board.projectId }
 }
 
 async function waitForBoardEntry(paneId) {
-  console.log('[wheel:node-pane] waitForBoardEntry: looking for paneId:', paneId)
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const result = await paneSendRequest('secrets.get', { key: 'boardState' })
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
-      const allPaneIds = Object.keys(board.paneToNode || {})
-      if (attempt === 0) {
-        console.log('[wheel:node-pane] waitForBoardEntry attempt', attempt, '- boardState has paneIds:', allPaneIds, 'looking for:', paneId, 'found:', !!entry)
-      }
       if (entry) return { ...entry, projectId: board.projectId }
-    } else if (attempt === 0) {
-      console.log('[wheel:node-pane] waitForBoardEntry attempt', attempt, '- no boardState value')
     }
-    await new Promise(r => setTimeout(r, 500))
+    await new Promise(r => setTimeout(r, 200))
   }
-  console.log('[wheel:node-pane] waitForBoardEntry: gave up after 10 attempts')
   return null
 }
 
@@ -952,6 +918,244 @@ function pollAgentStatus(projectId, nodeId) {
 }
 
 let myPaneIdGlobal = null
+let myNodeType = null
+
+const WIRE_MATRIX = [
+  ['agent', 'send', 'agent'],
+  ['agent', 'read', 'ctx'],
+  ['agent', 'write', 'ctx'],
+  ['agent', 'read', 'table'],
+  ['agent', 'write', 'table'],
+  ['agent', 'read', 'vault'],
+  ['agent', 'read', 'chest'],
+  ['agent', 'write', 'chest'],
+  ['agent', 'read', 'script'],
+  ['agent', 'read', 'mcp'],
+  ['agent', 'read', 'tool'],
+  ['ctx', 'send', 'agent'],
+  ['endpoint', 'send', 'agent'],
+  ['endpoint', 'write', 'table'],
+  ['endpoint', 'send', 'script'],
+  ['endpoint', 'read', 'vault'],
+  ['script', 'send', 'agent'],
+  ['script', 'read', 'ctx'],
+  ['script', 'write', 'ctx'],
+  ['script', 'read', 'table'],
+  ['script', 'write', 'table'],
+  ['script', 'read', 'chest'],
+  ['script', 'write', 'chest'],
+  ['script', 'read', 'vault'],
+  ['script', 'read', 'tool'],
+  ['tool', 'read', 'vault'],
+]
+
+function wireAllowed(fromType, wireType, toType) {
+  return WIRE_MATRIX.some(([f, w, t]) => f === fromType && w === wireType && t === toType)
+}
+
+function allowedWireTypes(fromType, toType) {
+  return ['read', 'write', 'send'].filter(w => wireAllowed(fromType, w, toType))
+}
+
+function outputWireTypes(nodeType) {
+  const types = new Set()
+  for (const [f, w] of WIRE_MATRIX) {
+    if (f === nodeType) types.add(w)
+  }
+  return [...types]
+}
+
+function inputWireTypes(nodeType) {
+  const types = new Set()
+  for (const [, w, t] of WIRE_MATRIX) {
+    if (t === nodeType) types.add(w)
+  }
+  return [...types]
+}
+
+function renderSockets(nodeType) {
+  const existing = document.querySelector('.socket-container')
+  if (existing) existing.remove()
+
+  const container = document.createElement('div')
+  container.className = 'socket-container'
+
+  const outputs = outputWireTypes(nodeType)
+  const inputs = inputWireTypes(nodeType)
+
+  const rightSpacing = outputs.length > 0 ? 100 / (outputs.length + 1) : 0
+
+  for (let i = 0; i < outputs.length; i++) {
+    const dot = document.createElement('div')
+    dot.className = `socket-dot ${outputs[i]}`
+    dot.dataset.side = 'output'
+    dot.dataset.wireType = outputs[i]
+    dot.style.right = '-5px'
+    dot.style.top = `${rightSpacing * (i + 1)}%`
+    dot.title = `${outputs[i]} (output)`
+
+    dot.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      paneSendRequest('canvas.startWireDrag', {
+        nodeId: nodeData?.id || '',
+        nodeType,
+        side: 'output',
+      })
+    })
+
+    container.appendChild(dot)
+  }
+
+  const leftSpacing = inputs.length > 0 ? 100 / (inputs.length + 1) : 0
+
+  for (let i = 0; i < inputs.length; i++) {
+    const dot = document.createElement('div')
+    dot.className = `socket-dot ${inputs[i]}`
+    dot.dataset.side = 'input'
+    dot.dataset.wireType = inputs[i]
+    dot.style.left = '-5px'
+    dot.style.top = `${leftSpacing * (i + 1)}%`
+    dot.title = `${inputs[i]} (input)`
+
+    dot.addEventListener('mouseup', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      paneSendRequest('canvas.endWireDrag', {
+        nodeId: nodeData?.id || '',
+        nodeType,
+      })
+    })
+
+    container.appendChild(dot)
+  }
+
+  document.body.appendChild(container)
+}
+
+function highlightValidSockets(fromNodeType) {
+  const sockets = document.querySelectorAll('.socket-dot[data-side="input"]')
+
+  for (const socket of sockets) {
+    const wireType = socket.dataset.wireType
+    const isValid = wireAllowed(fromNodeType, wireType, myNodeType)
+
+    socket.classList.toggle('valid-target', isValid)
+    socket.classList.toggle('dimmed', !isValid)
+  }
+}
+
+function clearSocketHighlights() {
+  const sockets = document.querySelectorAll('.socket-dot')
+
+  for (const socket of sockets) {
+    socket.classList.remove('valid-target', 'dimmed')
+  }
+}
+
+async function handleWireDragEnded(payload) {
+  const { fromPaneId, toPaneId, fromNodeId, toNodeId, fromNodeType, toNodeType } = payload
+
+  const isOriginator = myPaneIdGlobal === fromPaneId
+  if (!isOriginator || !paneApi || !activeProjectId) return
+
+  const types = allowedWireTypes(fromNodeType, toNodeType)
+  if (types.length === 0) return
+
+  if (types.length === 1) {
+    await createWireAndSync(fromNodeId, toNodeId, types[0])
+    return
+  }
+
+  showWireTypePicker(types, async (selectedType) => {
+    await createWireAndSync(fromNodeId, toNodeId, selectedType)
+  })
+}
+
+async function createWireAndSync(fromNodeId, toNodeId, wireType) {
+  try {
+    await paneApi.createWire(activeProjectId, fromNodeId, toNodeId, wireType)
+    await syncWireConnections()
+  } catch (err) {
+    console.error('[wheel:node-pane] createWire failed:', err)
+  }
+}
+
+async function syncWireConnections() {
+  if (!paneApi || !activeProjectId) return
+
+  try {
+    const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' })
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    const apiBoard = await paneApi.getBoard(activeProjectId)
+    const wires = apiBoard.wires || []
+
+    const nodeIdToPane = {}
+    for (const [paneId, entry] of Object.entries(board.paneToNode || {})) {
+      nodeIdToPane[entry.nodeId] = paneId
+    }
+
+    const paneAssociations = {}
+    for (const paneId of Object.keys(board.paneToNode || {})) {
+      paneAssociations[paneId] = new Set()
+    }
+
+    for (const wire of wires) {
+      const fromPane = nodeIdToPane[wire.from]
+      const toPane = nodeIdToPane[wire.to]
+      if (fromPane && toPane) {
+        paneAssociations[fromPane]?.add(toPane)
+        paneAssociations[toPane]?.add(fromPane)
+      }
+    }
+
+    for (const [paneId, peers] of Object.entries(paneAssociations)) {
+      const associatedPaneIds = [...peers]
+      await paneSendRequest('canvas.updatePane', { paneId, associatedPaneIds }).catch(() => {})
+    }
+  } catch {
+    // sync is best-effort
+  }
+}
+
+function showWireTypePicker(types, onSelect) {
+  removeWireTypePicker()
+
+  const picker = document.createElement('div')
+  picker.className = 'wire-type-picker'
+  picker.id = 'wire-type-picker'
+  picker.style.left = '50%'
+  picker.style.top = '50%'
+  picker.style.transform = 'translate(-50%, -50%)'
+
+  for (const t of types) {
+    const btn = document.createElement('button')
+    btn.className = t
+    btn.textContent = t.charAt(0).toUpperCase() + t.slice(1)
+    btn.addEventListener('click', () => {
+      removeWireTypePicker()
+      onSelect(t)
+    })
+    picker.appendChild(btn)
+  }
+
+  document.body.appendChild(picker)
+
+  setTimeout(() => {
+    document.addEventListener('mousedown', dismissPicker, { once: true })
+  }, 50)
+
+  function dismissPicker(e) {
+    if (!picker.contains(e.target)) removeWireTypePicker()
+  }
+}
+
+function removeWireTypePicker() {
+  const existing = document.getElementById('wire-type-picker')
+  if (existing) existing.remove()
+}
 
 ext.onMessage((msg) => {
   if (msg.kind !== 'event') return
@@ -967,14 +1171,62 @@ ext.onMessage((msg) => {
       handleSelfRemoved()
     }
   }
+
+  if (msg.topic === 'canvas.wireDragStarted') {
+    const { fromPaneId, fromNodeType } = msg.payload || {}
+    if (fromPaneId !== myPaneIdGlobal) {
+      highlightValidSockets(fromNodeType)
+    }
+  }
+
+  if (msg.topic === 'canvas.wireDragEnded') {
+    clearSocketHighlights()
+    handleWireDragEnded(msg.payload || {})
+  }
+
+  if (msg.topic === 'canvas.wireDragCancelled') {
+    clearSocketHighlights()
+  }
 })
 
 async function handleSelfRemoved() {
-  if (!paneApi || !activeProjectId || !nodeData) return
+  if (!nodeData || !myPaneIdGlobal) return
+
   try {
-    await paneApi.deleteNode(activeProjectId, nodeData.id)
+    const surfaceId = `wheel-${nodeData.type}`
+    const result = await paneSendRequest('canvas.spawnPane', {
+      kind: 'note',
+      title: nodeData.name,
+      extensionId: 'wheel.wheel',
+      surfaceId,
+    })
+
+    if (result?.paneId) {
+      await migrateBoardEntry(myPaneIdGlobal, result.paneId)
+    }
   } catch {
-    // cleanup failed
+    // respawn failed
+  }
+}
+
+async function migrateBoardEntry(oldPaneId, newPaneId) {
+  try {
+    const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' })
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    const entry = board.paneToNode?.[oldPaneId]
+    if (!entry) return
+
+    board.paneToNode[newPaneId] = entry
+    delete board.paneToNode[oldPaneId]
+
+    await paneSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(board),
+    })
+  } catch {
+    // migration is best-effort
   }
 }
 

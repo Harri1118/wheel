@@ -457,6 +457,83 @@
     .op-method.put { background: #3a3a1a; color: #aa6; }
     .op-method.delete { background: #3a1a1a; color: #a66; }
     .op-method.patch { background: #2a2a3a; color: #88c; }
+
+    .socket-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .socket-dot {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid #444;
+      background: #1a1a1a;
+      cursor: crosshair;
+      pointer-events: all;
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    .socket-dot:hover {
+      transform: scale(1.4);
+      border-color: #888;
+    }
+
+    .socket-dot.read { border-color: #5a5; }
+    .socket-dot.write { border-color: #a55; }
+    .socket-dot.send { border-color: #55a; }
+    .socket-dot.read:hover { border-color: #8d8; box-shadow: 0 0 6px #5a53; }
+    .socket-dot.write:hover { border-color: #d88; box-shadow: 0 0 6px #a553; }
+    .socket-dot.send:hover { border-color: #88d; box-shadow: 0 0 6px #55a3; }
+
+    .socket-dot.valid-target {
+      animation: socket-pulse 0.8s ease-in-out infinite;
+    }
+    .socket-dot.valid-target.read { box-shadow: 0 0 8px #5a5; }
+    .socket-dot.valid-target.write { box-shadow: 0 0 8px #a55; }
+    .socket-dot.valid-target.send { box-shadow: 0 0 8px #55a; }
+
+    .socket-dot.dimmed {
+      opacity: 0.2;
+      cursor: default;
+    }
+
+    @keyframes socket-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.5); }
+    }
+
+    .wire-type-picker {
+      position: fixed;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 4px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .wire-type-picker button {
+      background: none;
+      border: none;
+      color: #ccc;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .wire-type-picker button:hover { background: #333; }
+    .wire-type-picker button.read { color: #6a6; }
+    .wire-type-picker button.write { color: #a66; }
+    .wire-type-picker button.send { color: #66a; }
   </style>
 </head>
 <body>
