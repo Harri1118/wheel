@@ -271,6 +271,192 @@
       font-size: 10px;
       color: #555;
     }
+
+    /* --- runtime UI --- */
+
+    .runtime-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .msg-log {
+      max-height: 180px;
+      overflow-y: auto;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 4px;
+      padding: 6px;
+      font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .msg-log:empty::before {
+      content: 'No messages yet.';
+      color: #444;
+    }
+
+    .log-entry {
+      padding: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-entry.log-in { color: #6a6; }
+    .log-entry.log-out { color: #8af; }
+    .log-entry.log-system { color: #888; font-style: italic; }
+    .log-entry.log-stderr { color: #c66; }
+
+    .msg-input-row {
+      display: flex;
+      gap: 4px;
+    }
+    .msg-input-row textarea {
+      flex: 1;
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #ddd;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      min-height: 32px;
+      max-height: 80px;
+    }
+    .msg-input-row textarea:focus { border-color: #555; }
+
+    .table-viewer {
+      overflow-x: auto;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 4px;
+    }
+    .table-viewer table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .table-viewer th {
+      background: #1e1e1e;
+      color: #999;
+      font-weight: 600;
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid #2a2a2a;
+      white-space: nowrap;
+    }
+    .table-viewer td {
+      padding: 3px 8px;
+      border-bottom: 1px solid #1e1e1e;
+      color: #bbb;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .table-viewer .empty-table {
+      color: #555;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .sql-row {
+      display: flex;
+      gap: 4px;
+    }
+    .sql-row input {
+      flex: 1;
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #ddd;
+      font-size: 11px;
+      font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+      outline: none;
+    }
+    .sql-row input:focus { border-color: #555; }
+
+    .vault-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .vault-row input {
+      flex: 1;
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #ddd;
+      font-size: 12px;
+      outline: none;
+    }
+    .vault-row input:focus { border-color: #555; }
+
+    .file-list {
+      list-style: none;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 4px;
+      padding: 4px 0;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 11px;
+    }
+    .file-list li {
+      padding: 2px 8px;
+      color: #bbb;
+      font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+    }
+    .file-list:empty::before {
+      content: 'No files.';
+      color: #444;
+      padding: 8px;
+      display: block;
+      text-align: center;
+    }
+
+    .section-label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .runtime-error {
+      font-size: 11px;
+      color: #c66;
+      padding: 2px 0;
+    }
+
+    .op-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .op-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #bbb;
+    }
+    .op-method {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 2px;
+      text-transform: uppercase;
+    }
+    .op-method.get { background: #1a3a1a; color: #6a6; }
+    .op-method.post { background: #1a2a3a; color: #68a; }
+    .op-method.put { background: #3a3a1a; color: #aa6; }
+    .op-method.delete { background: #3a1a1a; color: #a66; }
+    .op-method.patch { background: #2a2a3a; color: #88c; }
   </style>
 </head>
 <body>

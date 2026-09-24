@@ -227,6 +227,8 @@ function renderNode(node) {
     renderAgentStatusRow(node)
     appendSeparator()
     renderAgentConfig(node)
+    appendSeparator()
+    renderAgentRuntime(node)
   }
 
   if (node.wires && node.wires.length > 0) {
@@ -236,6 +238,20 @@ function renderNode(node) {
 
   if (node.type !== 'agent' && node.config) {
     renderNonAgentConfig(node)
+  }
+
+  if (node.type === 'table') {
+    appendSeparator()
+    renderTableRuntime(node)
+  } else if (node.type === 'vault') {
+    appendSeparator()
+    renderVaultRuntime(node)
+  } else if (node.type === 'chest') {
+    appendSeparator()
+    renderChestRuntime(node)
+  } else if (node.type === 'tool') {
+    appendSeparator()
+    renderToolRuntime(node)
   }
 }
 
@@ -436,6 +452,384 @@ function renderNonAgentConfig(node) {
   preview.className = 'config-preview'
   preview.textContent = keys.join(', ')
   $card.appendChild(preview)
+}
+
+// ---- Agent runtime: message log + send input ----
+
+let agentLogCursor = 0
+let agentLogTimer = null
+
+function renderAgentRuntime(node) {
+  const section = document.createElement('div')
+  section.className = 'runtime-section'
+
+  const label = document.createElement('div')
+  label.className = 'section-label'
+  label.textContent = 'Transcript'
+  section.appendChild(label)
+
+  const log = document.createElement('div')
+  log.className = 'msg-log'
+  log.id = 'agent-log'
+  section.appendChild(log)
+
+  const inputRow = document.createElement('div')
+  inputRow.className = 'msg-input-row'
+
+  const textarea = document.createElement('textarea')
+  textarea.placeholder = 'Send a message...'
+  textarea.rows = 1
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendAgentMessage(textarea)
+    }
+  })
+  inputRow.appendChild(textarea)
+
+  const sendBtn = createButton('Send', 'btn-sm primary', () => sendAgentMessage(textarea))
+  sendBtn.id = 'agent-send-btn'
+  inputRow.appendChild(sendBtn)
+
+  section.appendChild(inputRow)
+  $card.appendChild(section)
+
+  startAgentLogPoll()
+}
+
+async function sendAgentMessage(textarea) {
+  const body = textarea.value.trim()
+  if (!body || !paneApi || !activeProjectId || !nodeData) return
+
+  const sendBtn = document.getElementById('agent-send-btn')
+  if (sendBtn) sendBtn.disabled = true
+  textarea.disabled = true
+
+  try {
+    await paneApi.sendToAgent(activeProjectId, nodeData.id, body)
+    textarea.value = ''
+    pollAgentLog()
+  } catch (err) {
+    appendLogEntry('agent-log', err.message, 'log-stderr')
+  } finally {
+    textarea.disabled = false
+    if (sendBtn) sendBtn.disabled = false
+    textarea.focus()
+  }
+}
+
+function startAgentLogPoll() {
+  if (agentLogTimer) clearInterval(agentLogTimer)
+  agentLogCursor = 0
+  pollAgentLog()
+  agentLogTimer = setInterval(pollAgentLog, 3000)
+}
+
+async function pollAgentLog() {
+  if (!paneApi || !activeProjectId || !nodeData) return
+  try {
+    const result = await paneApi.agentLog(activeProjectId, nodeData.id, { since: agentLogCursor })
+    const entries = Array.isArray(result) ? result : (result?.entries || [])
+    const logEl = document.getElementById('agent-log')
+    if (!logEl) return
+
+    for (const entry of entries) {
+      const seq = entry.seq ?? entry.id ?? 0
+      if (seq > agentLogCursor) agentLogCursor = seq
+
+      const stream = entry.stream || ''
+      let cls = 'log-entry'
+      if (stream === 'stderr') cls += ' log-stderr'
+      else if (stream === 'transcript' || stream === 'stdout') cls += ' log-out'
+      else cls += ' log-system'
+
+      appendLogEntry('agent-log', entry.line || entry.text || JSON.stringify(entry), cls)
+    }
+  } catch {
+    // poll failure — non-fatal
+  }
+}
+
+function appendLogEntry(containerId, text, className) {
+  const container = document.getElementById(containerId)
+  if (!container) return
+  const div = document.createElement('div')
+  div.className = className || 'log-entry'
+  div.textContent = text
+  container.appendChild(div)
+  container.scrollTop = container.scrollHeight
+}
+
+// ---- Table runtime: row viewer + SQL query ----
+
+function renderTableRuntime(node) {
+  const section = document.createElement('div')
+  section.className = 'runtime-section'
+
+  const label = document.createElement('div')
+  label.className = 'section-label'
+  label.textContent = 'Data'
+  section.appendChild(label)
+
+  const viewer = document.createElement('div')
+  viewer.className = 'table-viewer'
+  viewer.id = 'table-viewer'
+  section.appendChild(viewer)
+
+  const sqlRow = document.createElement('div')
+  sqlRow.className = 'sql-row'
+
+  const sqlInput = document.createElement('input')
+  sqlInput.type = 'text'
+  sqlInput.placeholder = 'SELECT * FROM ...'
+  sqlInput.id = 'sql-input'
+  sqlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runSqlQuery()
+  })
+  sqlRow.appendChild(sqlInput)
+
+  const runBtn = createButton('Run', 'btn-sm primary', runSqlQuery)
+  sqlRow.appendChild(runBtn)
+
+  const refreshBtn = createButton('Rows', 'btn-sm', loadTableRows)
+  sqlRow.appendChild(refreshBtn)
+
+  section.appendChild(sqlRow)
+
+  const errEl = document.createElement('div')
+  errEl.className = 'runtime-error'
+  errEl.id = 'table-error'
+  errEl.hidden = true
+  section.appendChild(errEl)
+
+  $card.appendChild(section)
+  loadTableRows()
+}
+
+async function loadTableRows() {
+  if (!paneApi || !activeProjectId || !nodeData) return
+  const errEl = document.getElementById('table-error')
+  if (errEl) errEl.hidden = true
+
+  try {
+    const result = await paneApi.tableRows(activeProjectId, nodeData.id, 50, 0)
+    renderTableData(result)
+  } catch (err) {
+    if (errEl) { errEl.textContent = err.message; errEl.hidden = false }
+  }
+}
+
+async function runSqlQuery() {
+  const sqlInput = document.getElementById('sql-input')
+  if (!sqlInput || !paneApi || !activeProjectId || !nodeData) return
+  const sql = sqlInput.value.trim()
+  if (!sql) return
+
+  const errEl = document.getElementById('table-error')
+  if (errEl) errEl.hidden = true
+
+  try {
+    const result = await paneApi.queryTable(activeProjectId, nodeData.id, sql)
+    renderTableData(result)
+  } catch (err) {
+    if (errEl) { errEl.textContent = err.message; errEl.hidden = false }
+  }
+}
+
+function renderTableData(result) {
+  const viewer = document.getElementById('table-viewer')
+  if (!viewer) return
+  viewer.textContent = ''
+
+  const columns = result?.columns || []
+  const rows = result?.rows || []
+
+  if (columns.length === 0 && rows.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty-table'
+    empty.textContent = 'No data.'
+    viewer.appendChild(empty)
+    return
+  }
+
+  const table = document.createElement('table')
+  const thead = document.createElement('thead')
+  const headerRow = document.createElement('tr')
+  for (const col of columns) {
+    const th = document.createElement('th')
+    th.textContent = typeof col === 'string' ? col : (col.name || col)
+    headerRow.appendChild(th)
+  }
+  thead.appendChild(headerRow)
+  table.appendChild(thead)
+
+  const tbody = document.createElement('tbody')
+  for (const row of rows) {
+    const tr = document.createElement('tr')
+    const values = Array.isArray(row) ? row : columns.map(c => row[typeof c === 'string' ? c : c.name])
+    for (const val of values) {
+      const td = document.createElement('td')
+      td.textContent = val === null ? 'NULL' : String(val)
+      td.title = val === null ? 'NULL' : String(val)
+      tr.appendChild(td)
+    }
+    tbody.appendChild(tr)
+  }
+  table.appendChild(tbody)
+  viewer.appendChild(table)
+}
+
+// ---- Vault runtime: write secrets ----
+
+function renderVaultRuntime(node) {
+  const section = document.createElement('div')
+  section.className = 'runtime-section'
+
+  const label = document.createElement('div')
+  label.className = 'section-label'
+  label.textContent = 'Write Secret'
+  section.appendChild(label)
+
+  const row = document.createElement('div')
+  row.className = 'vault-row'
+
+  const keyInput = document.createElement('input')
+  keyInput.type = 'text'
+  keyInput.placeholder = 'Key'
+  keyInput.id = 'vault-key'
+  row.appendChild(keyInput)
+
+  const valInput = document.createElement('input')
+  valInput.type = 'password'
+  valInput.placeholder = 'Value'
+  valInput.id = 'vault-value'
+  row.appendChild(valInput)
+
+  const saveBtn = createButton('Save', 'btn-sm primary', saveVaultSecret)
+  row.appendChild(saveBtn)
+
+  section.appendChild(row)
+
+  const status = document.createElement('div')
+  status.id = 'vault-status'
+  status.className = 'save-status'
+  section.appendChild(status)
+
+  $card.appendChild(section)
+}
+
+async function saveVaultSecret() {
+  const keyEl = document.getElementById('vault-key')
+  const valEl = document.getElementById('vault-value')
+  const statusEl = document.getElementById('vault-status')
+  if (!keyEl || !valEl || !paneApi || !activeProjectId || !nodeData) return
+
+  const key = keyEl.value.trim()
+  const value = valEl.value
+  if (!key) return
+
+  try {
+    await paneApi.putSecret(activeProjectId, nodeData.id, key, value)
+    if (statusEl) { statusEl.className = 'save-status ok'; statusEl.textContent = 'Saved' }
+    keyEl.value = ''
+    valEl.value = ''
+    setTimeout(() => { if (statusEl) statusEl.textContent = '' }, 2000)
+  } catch (err) {
+    if (statusEl) { statusEl.className = 'save-status err'; statusEl.textContent = err.message }
+  }
+}
+
+// ---- Chest runtime: file listing ----
+
+function renderChestRuntime(node) {
+  const section = document.createElement('div')
+  section.className = 'runtime-section'
+
+  const headerRow = document.createElement('div')
+  headerRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between;'
+
+  const label = document.createElement('div')
+  label.className = 'section-label'
+  label.textContent = 'Files'
+  headerRow.appendChild(label)
+
+  const refreshBtn = createButton('\u21bb', 'btn-sm', loadChestFiles)
+  headerRow.appendChild(refreshBtn)
+  section.appendChild(headerRow)
+
+  const list = document.createElement('ul')
+  list.className = 'file-list'
+  list.id = 'chest-files'
+  section.appendChild(list)
+
+  $card.appendChild(section)
+  loadChestFiles()
+}
+
+async function loadChestFiles() {
+  if (!paneApi || !activeProjectId || !nodeData) return
+  const list = document.getElementById('chest-files')
+  if (!list) return
+  list.textContent = ''
+
+  try {
+    const result = await paneApi.chestLs(activeProjectId, nodeData.id)
+    const files = Array.isArray(result) ? result : (result?.files || result?.keys || [])
+
+    if (files.length === 0) return
+
+    for (const f of files) {
+      const li = document.createElement('li')
+      li.textContent = typeof f === 'string' ? f : (f.key || f.name || JSON.stringify(f))
+      list.appendChild(li)
+    }
+  } catch {
+    // load failed — non-fatal
+  }
+}
+
+// ---- Tool runtime: operation list ----
+
+function renderToolRuntime(node) {
+  const section = document.createElement('div')
+  section.className = 'runtime-section'
+
+  const label = document.createElement('div')
+  label.className = 'section-label'
+  label.textContent = 'Operations'
+  section.appendChild(label)
+
+  const ops = node.config?.operations || []
+  if (ops.length === 0) {
+    const empty = document.createElement('div')
+    empty.style.cssText = 'color: #555; font-size: 11px;'
+    empty.textContent = 'No operations imported.'
+    section.appendChild(empty)
+    $card.appendChild(section)
+    return
+  }
+
+  const list = document.createElement('div')
+  list.className = 'op-list'
+
+  for (const op of ops) {
+    const item = document.createElement('div')
+    item.className = 'op-item'
+
+    const method = document.createElement('span')
+    method.className = `op-method ${(op.method || 'get').toLowerCase()}`
+    method.textContent = op.method || 'GET'
+    item.appendChild(method)
+
+    const name = document.createElement('span')
+    name.textContent = op.operation_id || op.name || op.path || '(unnamed)'
+    item.appendChild(name)
+
+    list.appendChild(item)
+  }
+
+  section.appendChild(list)
+  $card.appendChild(section)
 }
 
 function appendSeparator() {
