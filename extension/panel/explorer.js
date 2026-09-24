@@ -177,11 +177,8 @@ async function openProject(projectId) {
     })
     console.log('[wheel:explorer] boardState saved successfully')
 
-    $syncDot.className = 'dot ok'
-    $syncLabel.textContent = 'Synced'
-    $syncDetail.textContent = `${spawned} pane${spawned === 1 ? '' : 's'} on canvas`
-
     await syncWireConnections(projectId)
+    await refreshSyncStatus()
   } catch (err) {
     console.error('[wheel:explorer] openProject error:', err)
     $syncDot.className = 'dot err'
@@ -369,8 +366,97 @@ async function refreshSyncStatus() {
 
 document.getElementById('btn-refresh').addEventListener('click', initExplorer)
 document.getElementById('btn-retry')?.addEventListener('click', initExplorer)
+document.getElementById('btn-sync')?.addEventListener('click', syncFromWheel)
 
 let boardSyncTimer = null
+
+async function syncFromWheel() {
+  if (!explorerApi) return
+
+  $syncDot.className = 'dot'
+  $syncLabel.textContent = 'Syncing...'
+
+  try {
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    if (!board.projectId) return
+
+    const apiBoard = await explorerApi.getBoard(board.projectId)
+    const remoteNodes = apiBoard.nodes || []
+    const remoteWires = apiBoard.wires || []
+    const remoteNodeIds = new Set(remoteNodes.map(n => n.id))
+    const remoteNodesById = {}
+    for (const n of remoteNodes) remoteNodesById[n.id] = n
+
+    const paneToNode = board.paneToNode || {}
+    const localNodeIds = new Set(Object.values(paneToNode).map(e => e.nodeId))
+
+    const stalePaneIds = []
+    for (const [paneId, entry] of Object.entries(paneToNode)) {
+      if (!remoteNodeIds.has(entry.nodeId)) {
+        stalePaneIds.push(paneId)
+      }
+    }
+    for (const paneId of stalePaneIds) {
+      delete paneToNode[paneId]
+      await explorerSendRequest('canvas.killPane', { paneId }).catch(() => {})
+    }
+
+    const SCALE = 300
+    const OFFSET_X = 100
+    const OFFSET_Y = 100
+
+    for (const node of remoteNodes) {
+      if (localNodeIds.has(node.id)) continue
+
+      const surfaceId = `wheel-${node.type}`
+      const pos = node.position || { x: 0, y: 0 }
+      const result = await explorerSendRequest('canvas.spawnPane', {
+        kind: 'note',
+        title: node.name,
+        extensionId: 'wheel.wheel',
+        surfaceId,
+        x: OFFSET_X + pos.x * SCALE,
+        y: OFFSET_Y + pos.y * SCALE,
+      })
+
+      if (result?.paneId) {
+        const nodeWires = remoteWires
+          .filter(w => w.from === node.id || w.to === node.id)
+          .map(w => ({
+            type: w.type,
+            direction: w.from === node.id ? 'outgoing' : 'incoming',
+            peerName: (remoteNodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
+            peerType: (remoteNodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
+          }))
+        paneToNode[result.paneId] = {
+          nodeId: node.id,
+          nodeType: node.type,
+          nodeName: node.name,
+          nodeConfig: node.config,
+          wires: nodeWires,
+        }
+      }
+    }
+
+    board.paneToNode = paneToNode
+    board.nodesById = remoteNodesById
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(board),
+    })
+
+    await syncWireConnections(board.projectId)
+    await refreshSyncStatus()
+  } catch (err) {
+    $syncDot.className = 'dot err'
+    $syncLabel.textContent = 'Sync failed'
+    $syncDetail.textContent = err.message
+  }
+}
 
 async function pollBoardSync() {
   if (!explorerApi) return
