@@ -131,40 +131,30 @@ async function autoCreateNode(paneId, surfaceId) {
     return null
   }
 
-  const existingNames = Object.values(board.paneToNode || {}).map(e => e.nodeName || '')
-  let counter = 1
+  $loading.textContent = `Setting up ${nodeType} node...`
+
+  const backendBoard = await paneApi.getBoard(board.projectId).catch(() => null)
+  const backendNodes = backendBoard?.nodes || []
+  const backendNames = new Set(backendNodes.map(n => n.name))
+  const localNames = new Set(Object.values(board.paneToNode || {}).map(e => e.nodeName || ''))
+
   const sep = nodeType === 'table' ? '_' : '-'
+  let counter = 1
   let name = `${nodeType}${sep}${counter}`
-  while (existingNames.includes(name)) {
+  while (backendNames.has(name) || localNames.has(name)) {
     counter++
     name = `${nodeType}${sep}${counter}`
   }
-
-  const defaultConfigs = {
-    agent: { harness: 'claude', system_prompt: '' },
-    ctx: { markdown: '' },
-    table: { columns: [] },
-    endpoint: { method: 'POST', path: `/${name}`, response_mode: 'ack' },
-    script: { language: 'ts', source: '// new script' },
-    mcp: { transport: 'stdio', command: 'echo' },
-    vault: { keys: [] },
-    chest: {},
-    tool: { kind: 'http', source: { format: 'manual', raw: '', imported_at: new Date().toISOString() }, base_url: 'https://example.com', operations: [] },
-  }
-  const config = defaultConfigs[nodeType] || {}
-
-  $loading.textContent = `Creating ${nodeType} node...`
 
   let node = await paneApi.createNode(board.projectId, {
     name,
     type: nodeType,
     position: { x: 0, y: 0 },
-    config,
+    config: {},
   }).catch(() => null)
 
   if (!node?.id) {
-    const existing = await paneApi.getBoard(board.projectId).catch(() => null)
-    node = (existing?.nodes || []).find(n => n.name === name && n.type === nodeType)
+    node = backendNodes.find(n => n.name === name && n.type === nodeType)
     if (!node?.id) return null
   }
 
@@ -172,7 +162,7 @@ async function autoCreateNode(paneId, surfaceId) {
   board.paneToNode[paneId] = {
     nodeId: node.id,
     nodeType,
-    nodeName: name,
+    nodeName: node.name,
     nodeConfig: node.config || {},
     wires: [],
   }
