@@ -77,18 +77,22 @@ async function initNodePane() {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
-    console.log('[wheel:node-pane] paneId:', myPaneId, 'surfaceId:', mySurfaceId, 'hasApi:', !!paneApi)
     let entry = await waitForBoardEntry(myPaneId)
-    console.log('[wheel:node-pane] waitForBoardEntry result:', entry ? 'FOUND' : 'NOT FOUND', entry ? JSON.stringify({ nodeId: entry.nodeId, nodeName: entry.nodeName }) : '')
 
     if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
-      console.log('[wheel:node-pane] falling through to autoCreateNode, surfaceId:', mySurfaceId, 'nodeType:', SURFACE_TO_NODE_TYPE[mySurfaceId])
       entry = await autoCreateNode(myPaneId, mySurfaceId)
-      console.log('[wheel:node-pane] autoCreateNode result:', entry ? 'CREATED' : 'FAILED')
+    }
+
+    if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
+      const uncommittedType = SURFACE_TO_NODE_TYPE[mySurfaceId]
+      myNodeType = uncommittedType
+      nodeData = { id: null, type: uncommittedType, name: `new ${uncommittedType}`, config: {}, wires: [], uncommitted: true }
+      renderNode(nodeData)
+      renderSockets(uncommittedType)
+      return
     }
 
     if (!entry) {
-      console.log('[wheel:node-pane] NO ENTRY - paneApi:', !!paneApi, 'surfaceId:', mySurfaceId, 'mappedType:', SURFACE_TO_NODE_TYPE[mySurfaceId])
       $loading.textContent = paneApi ? 'Node not found.' : 'Configure Wheel API in extension settings.'
       return
     }
@@ -117,57 +121,23 @@ async function initNodePane() {
 
 async function autoCreateNode(paneId, surfaceId) {
   const nodeType = SURFACE_TO_NODE_TYPE[surfaceId]
-  if (!nodeType || !paneApi) return null
+  if (!nodeType) return null
 
   const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
-  if (!boardResult?.value) {
-    $loading.textContent = 'No project open.'
-    return null
-  }
+  if (!boardResult?.value) return null
 
   const board = JSON.parse(boardResult.value)
-  if (!board.projectId) {
-    $loading.textContent = 'No project open.'
-    return null
-  }
-
-  $loading.textContent = `Setting up ${nodeType} node...`
-
-  const backendBoard = await paneApi.getBoard(board.projectId).catch(() => null)
-  const backendNodes = backendBoard?.nodes || []
-  const backendNames = new Set(backendNodes.map(n => n.name))
-  const localNames = new Set(Object.values(board.paneToNode || {}).map(e => e.nodeName || ''))
-
-  const sep = nodeType === 'table' ? '_' : '-'
-  let counter = 1
-  let name = `${nodeType}${sep}${counter}`
-  while (backendNames.has(name) || localNames.has(name)) {
-    counter++
-    name = `${nodeType}${sep}${counter}`
-  }
-
-  let node = await paneApi.createNode(board.projectId, {
-    name,
-    type: nodeType,
-    position: { x: 0, y: 0 },
-    config: {},
-  }).catch(() => null)
-
-  if (!node?.id) {
-    node = backendNodes.find(n => n.name === name && n.type === nodeType)
-    if (!node?.id) return null
-  }
+  if (!board.projectId) return null
 
   board.paneToNode = board.paneToNode || {}
   board.paneToNode[paneId] = {
-    nodeId: node.id,
+    nodeId: null,
     nodeType,
-    nodeName: node.name,
-    nodeConfig: node.config || {},
+    nodeName: `new ${nodeType}`,
+    nodeConfig: {},
     wires: [],
+    uncommitted: true,
   }
-  board.nodesById = board.nodesById || {}
-  board.nodesById[node.id] = node
 
   await paneSendRequest('secrets.set', {
     key: 'boardState',
@@ -246,6 +216,13 @@ function renderHeader(node) {
   name.className = 'node-name'
   name.textContent = node.name
   header.appendChild(name)
+
+  if (node.uncommitted) {
+    const tag = document.createElement('span')
+    tag.className = 'uncommitted-badge'
+    tag.textContent = 'uncommitted'
+    header.appendChild(tag)
+  }
 
   $card.appendChild(header)
 }

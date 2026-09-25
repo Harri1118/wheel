@@ -505,11 +505,36 @@ async function syncFromWheel() {
     for (const n of remoteNodes) remoteNodesById[n.id] = n
 
     const paneToNode = board.paneToNode || {}
-    const localNodeIds = new Set(Object.values(paneToNode).map(e => e.nodeId))
+
+    for (const [paneId, entry] of Object.entries(paneToNode)) {
+      if (entry.uncommitted && entry.nodeType && explorerApi) {
+        const backendNames = new Set(remoteNodes.map(n => n.name))
+        const sep = entry.nodeType === 'table' ? '_' : '-'
+        let counter = 1
+        let name = `${entry.nodeType}${sep}${counter}`
+        while (backendNames.has(name)) { counter++; name = `${entry.nodeType}${sep}${counter}` }
+
+        const node = await explorerApi.createNode(board.projectId, {
+          name, type: entry.nodeType, position: { x: 0, y: 0 }, config: {},
+        }).catch(() => null)
+
+        if (node?.id) {
+          entry.nodeId = node.id
+          entry.nodeName = node.name
+          entry.nodeConfig = node.config || {}
+          delete entry.uncommitted
+          remoteNodes.push(node)
+          remoteNodesById[node.id] = node
+          backendNames.add(node.name)
+        }
+      }
+    }
+
+    const localNodeIds = new Set(Object.values(paneToNode).map(e => e.nodeId).filter(Boolean))
 
     const stalePaneIds = []
     for (const [paneId, entry] of Object.entries(paneToNode)) {
-      if (!remoteNodeIds.has(entry.nodeId)) {
+      if (!entry.nodeId || (!entry.uncommitted && !remoteNodeIds.has(entry.nodeId))) {
         stalePaneIds.push(paneId)
       }
     }
