@@ -72,15 +72,18 @@ async function spawnNode(type, defaultLabel) {
 
   try {
     const node = await paletteApi.createNode(board.projectId, { type, name, config: {} })
+    if (!node?.id) return
+
+    const surfaceId = `wheel-${type}`
 
     const result = await paletteSendRequest('canvas.spawnPane', {
       kind: 'note',
       title: name,
       extensionId: 'wheel.wheel',
-      surfaceId: 'wheel-node',
+      surfaceId,
     })
 
-    if (result?.paneId && node?.id) {
+    if (result?.paneId) {
       board.paneToNode = board.paneToNode || {}
       board.paneToNode[result.paneId] = {
         nodeId: node.id,
