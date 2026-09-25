@@ -875,12 +875,20 @@ function listenForInspectorEvents() {
 
     if (msg.topic === 'canvas.paneRemoved') {
       const paneId = msg.payload?.paneId
-      if (!paneId || !boardState) return
+      if (!paneId) return
 
-      const entry = boardState?.paneToNode?.[paneId]
-      if (entry?.nodeId === currentNodeId) {
-        showEmpty('Node removed.')
-      }
+      reloadBoardState().then(() => {
+        const activePanes = Object.keys(boardState?.paneToNode || {})
+        if (activePanes.length === 0) {
+          showEmpty('No Wheel project synced. Open a project from the Wheel Projects panel.')
+          return
+        }
+
+        if (currentNodeId) {
+          const stillExists = Object.values(boardState?.paneToNode || {}).some(e => e.nodeId === currentNodeId)
+          if (!stillExists) showEmpty('Node removed.')
+        }
+      })
     }
   })
 }
