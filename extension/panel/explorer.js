@@ -108,6 +108,11 @@ async function openProject(projectId) {
   try {
     await killAllWheelPanes()
 
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify({ spawning: true }),
+    })
+
     const board = await explorerApi.getBoard(projectId)
     const nodes = board.nodes || []
     const wires = board.wires || []
@@ -119,11 +124,6 @@ async function openProject(projectId) {
     const OFFSET_Y = 100
 
     const boardState = { projectId, paneToNode: {}, nodesById, spawning: true }
-
-    await explorerSendRequest('secrets.set', {
-      key: 'boardState',
-      value: JSON.stringify(boardState),
-    })
 
     const spawnResults = []
     for (const node of nodes) {
