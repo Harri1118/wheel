@@ -155,13 +155,18 @@ async function autoCreateNode(paneId, surfaceId) {
 
   $loading.textContent = `Creating ${nodeType} node...`
 
-  const node = await paneApi.createNode(board.projectId, {
+  let node = await paneApi.createNode(board.projectId, {
     name,
     type: nodeType,
     position: { x: 0, y: 0 },
     config,
-  })
-  if (!node?.id) return null
+  }).catch(() => null)
+
+  if (!node?.id) {
+    const existing = await paneApi.getBoard(board.projectId).catch(() => null)
+    node = (existing?.nodes || []).find(n => n.name === name && n.type === nodeType)
+    if (!node?.id) return null
+  }
 
   board.paneToNode = board.paneToNode || {}
   board.paneToNode[paneId] = {
