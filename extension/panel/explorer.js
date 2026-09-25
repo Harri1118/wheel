@@ -122,6 +122,8 @@ async function openProject(projectId) {
 
     const boardState = { projectId, paneToNode: {}, nodesById }
 
+    suppressPaneRemoved = true
+
     await explorerSendRequest('secrets.set', {
       key: 'boardState',
       value: JSON.stringify(boardState),
@@ -131,10 +133,12 @@ async function openProject(projectId) {
       await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
     }
 
+    suppressPaneRemoved = false
+
+    const spawnResults = []
     for (const node of nodes) {
       const surfaceId = `wheel-${node.type}`
       const pos = node.position || { x: 0, y: 0 }
-      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type, 'pos:', JSON.stringify(pos), 'raw position:', JSON.stringify(node.position))
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
@@ -145,30 +149,32 @@ async function openProject(projectId) {
       })
 
       if (result?.paneId) {
-        const nodeWires = wires
-          .filter(w => w.from === node.id || w.to === node.id)
-          .map(w => ({
-            type: w.type,
-            direction: w.from === node.id ? 'outgoing' : 'incoming',
-            peerName: (nodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
-            peerType: (nodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
-          }))
-        boardState.paneToNode[result.paneId] = {
-          nodeId: node.id,
-          nodeType: node.type,
-          nodeName: node.name,
-          nodeConfig: node.config,
-          wires: nodeWires,
-        }
-
-        await explorerSendRequest('secrets.set', {
-          key: 'boardState',
-          value: JSON.stringify(boardState),
-        })
+        spawnResults.push({ paneId: result.paneId, node })
       }
     }
 
-    console.log('[wheel:explorer] boardState saved, panes:', Object.keys(boardState.paneToNode).length)
+    for (const { paneId, node } of spawnResults) {
+      const nodeWires = wires
+        .filter(w => w.from === node.id || w.to === node.id)
+        .map(w => ({
+          type: w.type,
+          direction: w.from === node.id ? 'outgoing' : 'incoming',
+          peerName: (nodesById[w.from === node.id ? w.to : w.from] || {}).name || 'unknown',
+          peerType: (nodesById[w.from === node.id ? w.to : w.from] || {}).type || 'unknown',
+        }))
+      boardState.paneToNode[paneId] = {
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeName: node.name,
+        nodeConfig: node.config,
+        wires: nodeWires,
+      }
+    }
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(boardState),
+    })
 
     await syncWireConnections(projectId)
     await refreshSyncStatus()
@@ -249,11 +255,15 @@ function listenForExplorerEvents() {
 }
 
 async function handlePaneRemoved(paneId) {
+  if (suppressPaneRemoved) return
+
   try {
     const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
     if (!boardResult?.value) return
 
     const board = JSON.parse(boardResult.value)
+    if (!board.projectId) return
+
     const entry = board.paneToNode?.[paneId]
     if (!entry) return
 
@@ -467,19 +477,23 @@ async function stopProject() {
     const board = JSON.parse(boardResult.value)
     const paneIds = Object.keys(board.paneToNode || {})
 
-    for (const pid of paneIds) {
-      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
-    }
+    suppressPaneRemoved = true
 
     await explorerSendRequest('secrets.set', {
       key: 'boardState',
       value: JSON.stringify({ projectId: null, paneToNode: {}, nodesById: {} }),
     })
 
+    for (const pid of paneIds) {
+      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
+    }
+
+    suppressPaneRemoved = false
+
     $syncArea.hidden = true
     $nodeList.textContent = ''
   } catch {
-    // stop failed — not fatal
+    suppressPaneRemoved = false
   }
 }
 
@@ -489,6 +503,7 @@ document.getElementById('btn-sync')?.addEventListener('click', syncFromWheel)
 document.getElementById('btn-stop')?.addEventListener('click', stopProject)
 
 let boardSyncTimer = null
+let suppressPaneRemoved = false
 
 async function syncFromWheel() {
   if (!explorerApi) return

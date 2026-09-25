@@ -64,6 +64,7 @@ async function initNodePane() {
     const myPaneId = desc?.paneId
     myPaneIdGlobal = myPaneId
     const mySurfaceId = desc?.surfaceId
+    console.log('[wheel:node-pane] desc:', JSON.stringify(desc))
     if (!myPaneId) {
       $loading.textContent = 'No pane identity.'
       return
@@ -76,13 +77,18 @@ async function initNodePane() {
       paneApi = new WheelApi(apiUrl, apiToken)
     }
 
+    console.log('[wheel:node-pane] paneId:', myPaneId, 'surfaceId:', mySurfaceId, 'hasApi:', !!paneApi)
     let entry = await waitForBoardEntry(myPaneId)
+    console.log('[wheel:node-pane] waitForBoardEntry result:', entry ? 'FOUND' : 'NOT FOUND', entry ? JSON.stringify({ nodeId: entry.nodeId, nodeName: entry.nodeName }) : '')
 
     if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
+      console.log('[wheel:node-pane] falling through to autoCreateNode, surfaceId:', mySurfaceId, 'nodeType:', SURFACE_TO_NODE_TYPE[mySurfaceId])
       entry = await autoCreateNode(myPaneId, mySurfaceId)
+      console.log('[wheel:node-pane] autoCreateNode result:', entry ? 'CREATED' : 'FAILED')
     }
 
     if (!entry) {
+      console.log('[wheel:node-pane] NO ENTRY - paneApi:', !!paneApi, 'surfaceId:', mySurfaceId, 'mappedType:', SURFACE_TO_NODE_TYPE[mySurfaceId])
       $loading.textContent = paneApi ? 'Node not found.' : 'Configure Wheel API in extension settings.'
       return
     }
@@ -182,10 +188,15 @@ async function waitForBoardEntry(paneId, maxAttempts = 5, delayMs = 300) {
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
+      const allPaneIds = Object.keys(board.paneToNode || {})
+      console.log(`[wheel:node-pane] waitForBoardEntry attempt ${attempt + 1}/${maxAttempts} for ${paneId}: found=${!!entry}, boardPaneIds=[${allPaneIds.join(', ')}], projectId=${board.projectId || 'none'}`)
       if (entry) return { ...entry, projectId: board.projectId }
+    } else {
+      console.log(`[wheel:node-pane] waitForBoardEntry attempt ${attempt + 1}/${maxAttempts} for ${paneId}: NO boardState`)
     }
     await new Promise(r => setTimeout(r, delayMs))
   }
+  console.log(`[wheel:node-pane] waitForBoardEntry GAVE UP after ${maxAttempts} attempts for ${paneId}`)
   return null
 }
 
