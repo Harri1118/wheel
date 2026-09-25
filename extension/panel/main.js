@@ -461,7 +461,7 @@ async function handleSpawnCommand(commandId) {
     const result = await sendRequest('canvas.spawnPane', {
       kind: nodeType === 'agent' ? 'worker' : 'note',
       title: name,
-      extensionId: 'wheel.wheel',
+      extensionId: 'agentgrid.wheel',
       surfaceId: 'wheel-node',
     })
 

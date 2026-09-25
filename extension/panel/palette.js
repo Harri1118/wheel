@@ -79,7 +79,7 @@ async function spawnNode(type, defaultLabel) {
     const result = await paletteSendRequest('canvas.spawnPane', {
       kind: 'note',
       title: name,
-      extensionId: 'wheel.wheel',
+      extensionId: 'agentgrid.wheel',
       surfaceId,
     })
 

@@ -1241,7 +1241,7 @@ async function handleWireDragSpawnRequest(payload) {
     const result = await paneSendRequest('canvas.spawnPane', {
       kind: 'note',
       title: newNode.name || nodeName,
-      extensionId: 'wheel.wheel',
+      extensionId: 'agentgrid.wheel',
       surfaceId: targetSurfaceId,
       x,
       y,
@@ -1283,7 +1283,7 @@ async function handleSelfRemoved() {
     const result = await paneSendRequest('canvas.spawnPane', {
       kind: 'note',
       title: nodeData.name,
-      extensionId: 'wheel.wheel',
+      extensionId: 'agentgrid.wheel',
       surfaceId,
     })
 

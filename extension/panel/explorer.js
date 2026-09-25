@@ -132,7 +132,7 @@ async function openProject(projectId) {
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
-        extensionId: 'wheel.wheel',
+        extensionId: 'agentgrid.wheel',
         surfaceId,
         x: OFFSET_X + pos.x * SCALE,
         y: OFFSET_Y + pos.y * SCALE,
@@ -353,7 +353,7 @@ async function respawnClosedNode(nodeId, entry, projectId) {
     const result = await explorerSendRequest('canvas.spawnPane', {
       kind: 'note',
       title: entry.nodeName || nodeId,
-      extensionId: 'wheel.wheel',
+      extensionId: 'agentgrid.wheel',
       surfaceId,
       x: OFFSET_X + (pos.x || 0) * SCALE,
       y: OFFSET_Y + (pos.y || 0) * SCALE,
@@ -530,7 +530,7 @@ async function syncFromWheel() {
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,
-        extensionId: 'wheel.wheel',
+        extensionId: 'agentgrid.wheel',
         surfaceId,
         x: OFFSET_X + pos.x * SCALE,
         y: OFFSET_Y + pos.y * SCALE,
