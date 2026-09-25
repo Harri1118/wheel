@@ -973,6 +973,23 @@ function inputWireTypes(nodeType) {
   return [...types]
 }
 
+const NODE_TYPE_LABELS = {
+  agent: 'Agent', ctx: 'Context', table: 'Table', endpoint: 'Endpoint',
+  script: 'Script', mcp: 'MCP Server', vault: 'Vault', chest: 'Chest', tool: 'Tool',
+}
+
+function compatibleTargetsForOutput(fromNodeType) {
+  const targetTypes = new Set()
+  for (const [f, , t] of WIRE_MATRIX) {
+    if (f === fromNodeType) targetTypes.add(t)
+  }
+  return [...targetTypes].map(t => ({
+    nodeType: t,
+    label: NODE_TYPE_LABELS[t] || t,
+    surfaceId: `wheel-${t}`,
+  }))
+}
+
 function renderSockets(nodeType) {
   const existing = document.querySelector('.socket-container')
   if (existing) existing.remove()
@@ -1001,6 +1018,7 @@ function renderSockets(nodeType) {
         nodeId: nodeData?.id || '',
         nodeType,
         side: 'output',
+        compatibleTargets: compatibleTargetsForOutput(nodeType),
       })
     })
 
@@ -1187,7 +1205,61 @@ ext.onMessage((msg) => {
   if (msg.topic === 'canvas.wireDragCancelled') {
     clearSocketHighlights()
   }
+
+  if (msg.topic === 'canvas.wireDragSpawnRequest') {
+    handleWireDragSpawnRequest(msg.payload || {})
+  }
 })
+
+async function handleWireDragSpawnRequest(payload) {
+  const { fromPaneId, fromNodeId, fromNodeType, targetNodeType, targetSurfaceId, x, y } = payload
+
+  if (fromPaneId !== myPaneIdGlobal || !paneApi || !activeProjectId) return
+
+  try {
+    const nodeName = `${targetNodeType}-${Date.now().toString(36).slice(-4)}`
+    const SCALE = 300
+    const gridPos = { x: Math.round((x - 100) / SCALE * 10) / 10, y: Math.round((y - 100) / SCALE * 10) / 10 }
+
+    const newNode = await paneApi.createNode(activeProjectId, { name: nodeName, type: targetNodeType, position: gridPos })
+    if (!newNode?.id) return
+
+    const result = await paneSendRequest('canvas.spawnPane', {
+      kind: 'note',
+      title: newNode.name || nodeName,
+      extensionId: 'wheel.wheel',
+      surfaceId: targetSurfaceId,
+      x,
+      y,
+    })
+
+    if (!result?.paneId) return
+
+    const boardResult = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+
+    const board = JSON.parse(boardResult.value)
+    board.paneToNode = board.paneToNode || {}
+    board.nodesById = board.nodesById || {}
+    board.paneToNode[result.paneId] = {
+      nodeId: newNode.id,
+      nodeType: targetNodeType,
+      nodeName: newNode.name || nodeName,
+      nodeConfig: newNode.config || {},
+      wires: [],
+    }
+    board.nodesById[newNode.id] = newNode
+
+    await paneSendRequest('secrets.set', { key: 'boardState', value: JSON.stringify(board) })
+
+    const wireTypes = allowedWireTypes(fromNodeType, targetNodeType)
+    if (wireTypes.length > 0) {
+      await createWireAndSync(fromNodeId, newNode.id, wireTypes[0])
+    }
+  } catch (err) {
+    console.error('[wheel:node-pane] wireDragSpawnRequest failed:', err)
+  }
+}
 
 async function handleSelfRemoved() {
   if (!nodeData || !myPaneIdGlobal) return

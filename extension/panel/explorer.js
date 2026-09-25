@@ -251,10 +251,9 @@ async function handlePaneRemoved(paneId) {
     const entry = board.paneToNode?.[paneId]
     if (!entry) return
 
-    if (explorerApi && board.projectId && entry.nodeId) {
-      await explorerApi.deleteNode(board.projectId, entry.nodeId).catch(() => {})
-    }
-
+    entry.closedPaneId = paneId
+    board.closedNodes = board.closedNodes || {}
+    board.closedNodes[entry.nodeId] = entry
     delete board.paneToNode[paneId]
 
     await explorerSendRequest('secrets.set', {
@@ -272,9 +271,9 @@ async function handlePaneRemoved(paneId) {
 function renderNodeList(board) {
   $nodeList.textContent = ''
   const paneToNode = board?.paneToNode || {}
-  const entries = Object.entries(paneToNode)
+  const closedNodes = board?.closedNodes || {}
 
-  for (const [paneId, entry] of entries) {
+  for (const [paneId, entry] of Object.entries(paneToNode)) {
     const li = document.createElement('li')
     li.className = 'node-item'
 
@@ -296,6 +295,105 @@ function renderNodeList(board) {
     li.appendChild(del)
 
     $nodeList.appendChild(li)
+  }
+
+  for (const [nodeId, entry] of Object.entries(closedNodes)) {
+    const li = document.createElement('li')
+    li.className = 'node-item node-item-closed'
+    li.title = 'Click to reopen on canvas'
+    li.style.opacity = '0.5'
+    li.style.cursor = 'pointer'
+
+    const tag = document.createElement('span')
+    tag.className = 'node-type-tag'
+    tag.textContent = entry.nodeType || '?'
+    li.appendChild(tag)
+
+    const name = document.createElement('span')
+    name.className = 'node-item-name'
+    name.textContent = entry.nodeName || nodeId
+    li.appendChild(name)
+
+    li.addEventListener('click', () => respawnClosedNode(nodeId, entry, board.projectId))
+
+    const del = document.createElement('button')
+    del.className = 'node-delete-btn'
+    del.textContent = '\u00d7'
+    del.title = 'Delete node'
+    del.addEventListener('click', (e) => {
+      e.stopPropagation()
+      deleteClosedNode(nodeId, entry, board.projectId)
+    })
+    li.appendChild(del)
+
+    $nodeList.appendChild(li)
+  }
+}
+
+async function respawnClosedNode(nodeId, entry, projectId) {
+  try {
+    const surfaceId = `wheel-${entry.nodeType}`
+    const SCALE = 300
+    const OFFSET_X = 100
+    const OFFSET_Y = 100
+
+    const nodeInfo = entry.nodeConfig?.position || { x: 0, y: 0 }
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (!boardResult?.value) return
+    const board = JSON.parse(boardResult.value)
+    const pos = board.nodesById?.[nodeId]?.position || nodeInfo
+
+    const result = await explorerSendRequest('canvas.spawnPane', {
+      kind: 'note',
+      title: entry.nodeName || nodeId,
+      extensionId: 'wheel.wheel',
+      surfaceId,
+      x: OFFSET_X + (pos.x || 0) * SCALE,
+      y: OFFSET_Y + (pos.y || 0) * SCALE,
+    })
+
+    if (!result?.paneId) return
+
+    board.paneToNode = board.paneToNode || {}
+    const restored = { ...entry }
+    delete restored.closedPaneId
+    board.paneToNode[result.paneId] = restored
+
+    delete board.closedNodes[nodeId]
+    if (Object.keys(board.closedNodes).length === 0) delete board.closedNodes
+
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(board),
+    })
+
+    await syncWireConnections(projectId)
+    refreshSyncStatus()
+  } catch {
+    // respawn failed — not fatal
+  }
+}
+
+async function deleteClosedNode(nodeId, entry, projectId) {
+  try {
+    if (explorerApi && projectId) {
+      await explorerApi.deleteNode(projectId, nodeId).catch(() => {})
+    }
+
+    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    if (boardResult?.value) {
+      const board = JSON.parse(boardResult.value)
+      if (board.closedNodes) delete board.closedNodes[nodeId]
+      if (board.nodesById) delete board.nodesById[nodeId]
+      await explorerSendRequest('secrets.set', {
+        key: 'boardState',
+        value: JSON.stringify(board),
+      })
+    }
+
+    refreshSyncStatus()
+  } catch {
+    // delete failed — not fatal
   }
 }
 
@@ -340,10 +438,14 @@ async function refreshSyncStatus() {
     }
 
     $syncArea.hidden = false
-    const nodeCount = Object.keys(board.paneToNode || {}).length
+    const activeCount = Object.keys(board.paneToNode || {}).length
+    const closedCount = Object.keys(board.closedNodes || {}).length
+    const totalCount = activeCount + closedCount
     $syncDot.className = 'dot ok'
     $syncLabel.textContent = 'Synced'
-    $syncDetail.textContent = `${nodeCount} node${nodeCount === 1 ? '' : 's'} on canvas`
+    const parts = [`${activeCount} on canvas`]
+    if (closedCount > 0) parts.push(`${closedCount} closed`)
+    $syncDetail.textContent = `${totalCount} node${totalCount === 1 ? '' : 's'} — ${parts.join(', ')}`
     renderNodeList(board)
 
   } catch {
@@ -498,7 +600,10 @@ async function pollBoardSync() {
       }
     }
 
-    if (stalePaneIds.length === 0) return
+    if (stalePaneIds.length === 0) {
+      refreshSyncStatus()
+      return
+    }
 
     for (const paneId of stalePaneIds) {
       delete paneToNode[paneId]
