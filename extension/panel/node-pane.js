@@ -182,21 +182,19 @@ async function autoCreateNode(paneId, surfaceId) {
   return { ...board.paneToNode[paneId], projectId: board.projectId }
 }
 
-async function waitForBoardEntry(paneId, maxAttempts = 5, delayMs = 300) {
+async function waitForBoardEntry(paneId, maxAttempts = 20, delayMs = 250) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const result = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
-      const allPaneIds = Object.keys(board.paneToNode || {})
-      console.log(`[wheel:node-pane] waitForBoardEntry attempt ${attempt + 1}/${maxAttempts} for ${paneId}: found=${!!entry}, boardPaneIds=[${allPaneIds.join(', ')}], projectId=${board.projectId || 'none'}`)
+
       if (entry) return { ...entry, projectId: board.projectId }
-    } else {
-      console.log(`[wheel:node-pane] waitForBoardEntry attempt ${attempt + 1}/${maxAttempts} for ${paneId}: NO boardState`)
+
+      if (board.spawning) continue
     }
     await new Promise(r => setTimeout(r, delayMs))
   }
-  console.log(`[wheel:node-pane] waitForBoardEntry GAVE UP after ${maxAttempts} attempts for ${paneId}`)
   return null
 }
 

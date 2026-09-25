@@ -93,26 +93,45 @@ async function refreshProjects() {
   }
 }
 
+async function collectAllWheelPaneIds() {
+  const result = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+  if (!result?.value) return []
+
+  const board = JSON.parse(result.value)
+  const ids = new Set()
+
+  for (const pid of Object.keys(board.paneToNode || {})) ids.add(pid)
+  for (const entry of Object.values(board.closedNodes || {})) {
+    if (entry.closedPaneId) ids.add(entry.closedPaneId)
+  }
+
+  return [...ids]
+}
+
+async function killAllWheelPanes() {
+  suppressPaneRemoved = true
+
+  const paneIds = await collectAllWheelPaneIds()
+
+  for (const pid of paneIds) {
+    await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
+  }
+
+  suppressPaneRemoved = false
+}
+
 async function openProject(projectId) {
-  console.log('[wheel:explorer] openProject called, projectId:', projectId)
   $syncArea.hidden = false
   $syncDot.className = 'dot'
   $syncLabel.textContent = 'Opening...'
   $syncDetail.textContent = ''
 
   try {
-    const oldBoardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
-    let oldPaneIds = []
-    if (oldBoardResult?.value) {
-      const oldBoard = JSON.parse(oldBoardResult.value)
-      oldPaneIds = Object.keys(oldBoard.paneToNode || {})
-    }
+    await killAllWheelPanes()
 
-    console.log('[wheel:explorer] fetching board from API...')
     const board = await explorerApi.getBoard(projectId)
     const nodes = board.nodes || []
     const wires = board.wires || []
-    console.log('[wheel:explorer] board fetched, nodes:', nodes.length, 'wires:', wires.length)
     const nodesById = {}
     for (const n of nodes) nodesById[n.id] = n
 
@@ -120,20 +139,12 @@ async function openProject(projectId) {
     const OFFSET_X = 100
     const OFFSET_Y = 100
 
-    const boardState = { projectId, paneToNode: {}, nodesById }
-
-    suppressPaneRemoved = true
+    const boardState = { projectId, paneToNode: {}, nodesById, spawning: true }
 
     await explorerSendRequest('secrets.set', {
       key: 'boardState',
       value: JSON.stringify(boardState),
     })
-
-    for (const pid of oldPaneIds) {
-      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
-    }
-
-    suppressPaneRemoved = false
 
     const spawnResults = []
     for (const node of nodes) {
@@ -171,6 +182,8 @@ async function openProject(projectId) {
       }
     }
 
+    boardState.spawning = false
+
     await explorerSendRequest('secrets.set', {
       key: 'boardState',
       value: JSON.stringify(boardState),
@@ -179,7 +192,6 @@ async function openProject(projectId) {
     await syncWireConnections(projectId)
     await refreshSyncStatus()
   } catch (err) {
-    console.error('[wheel:explorer] openProject error:', err)
     $syncDot.className = 'dot err'
     $syncLabel.textContent = 'Error'
     $syncDetail.textContent = err.message
@@ -471,24 +483,12 @@ async function refreshSyncStatus() {
 
 async function stopProject() {
   try {
-    const boardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
-    if (!boardResult?.value) return
-
-    const board = JSON.parse(boardResult.value)
-    const paneIds = Object.keys(board.paneToNode || {})
-
-    suppressPaneRemoved = true
+    await killAllWheelPanes()
 
     await explorerSendRequest('secrets.set', {
       key: 'boardState',
       value: JSON.stringify({ projectId: null, paneToNode: {}, nodesById: {} }),
     })
-
-    for (const pid of paneIds) {
-      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
-    }
-
-    suppressPaneRemoved = false
 
     $syncArea.hidden = true
     $nodeList.textContent = ''
