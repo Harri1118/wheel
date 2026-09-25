@@ -102,13 +102,10 @@ async function openProject(projectId) {
 
   try {
     const oldBoardResult = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+    let oldPaneIds = []
     if (oldBoardResult?.value) {
       const oldBoard = JSON.parse(oldBoardResult.value)
-      const oldPaneIds = Object.keys(oldBoard.paneToNode || {})
-      console.log('[wheel:explorer] cleaning up old panes:', oldPaneIds)
-      for (const pid of oldPaneIds) {
-        await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
-      }
+      oldPaneIds = Object.keys(oldBoard.paneToNode || {})
     }
 
     console.log('[wheel:explorer] fetching board from API...')
@@ -125,10 +122,19 @@ async function openProject(projectId) {
 
     const boardState = { projectId, paneToNode: {}, nodesById }
 
+    await explorerSendRequest('secrets.set', {
+      key: 'boardState',
+      value: JSON.stringify(boardState),
+    })
+
+    for (const pid of oldPaneIds) {
+      await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
+    }
+
     for (const node of nodes) {
       const surfaceId = `wheel-${node.type}`
       const pos = node.position || { x: 0, y: 0 }
-      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type)
+      console.log('[wheel:explorer] spawning pane for node:', node.name, 'type:', node.type, 'pos:', JSON.stringify(pos), 'raw position:', JSON.stringify(node.position))
       const result = await explorerSendRequest('canvas.spawnPane', {
         kind: 'note',
         title: node.name,

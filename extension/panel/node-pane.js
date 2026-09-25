@@ -172,14 +172,14 @@ async function autoCreateNode(paneId, surfaceId) {
 }
 
 async function waitForBoardEntry(paneId) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const result = await paneSendRequest('secrets.get', { key: 'boardState' })
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
       if (entry) return { ...entry, projectId: board.projectId }
     }
-    await new Promise(r => setTimeout(r, 200))
+    await new Promise(r => setTimeout(r, 300))
   }
   return null
 }
