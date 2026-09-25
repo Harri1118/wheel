@@ -79,11 +79,16 @@ async function initNodePane() {
     let entry = await waitForBoardEntry(myPaneId)
 
     if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
-      entry = await autoCreateNode(myPaneId, mySurfaceId)
+      const hasActiveProject = await checkActiveProject()
+      if (hasActiveProject) {
+        entry = await waitForBoardEntry(myPaneId, 20, 500)
+      } else {
+        entry = await autoCreateNode(myPaneId, mySurfaceId)
+      }
     }
 
     if (!entry) {
-      $loading.textContent = 'Node not found.'
+      $loading.textContent = paneApi ? 'Node not found.' : 'Configure Wheel API in extension settings.'
       return
     }
 
@@ -100,7 +105,12 @@ async function initNodePane() {
     }
   } catch (err) {
     console.error('[wheel:node-pane] initNodePane error:', err)
-    $loading.textContent = err.message
+    const msg = err.message || String(err)
+    if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed')) {
+      $loading.textContent = 'Connection error. Configure Wheel API in extension settings.'
+    } else {
+      $loading.textContent = msg
+    }
   }
 }
 
@@ -171,17 +181,24 @@ async function autoCreateNode(paneId, surfaceId) {
   return { ...board.paneToNode[paneId], projectId: board.projectId }
 }
 
-async function waitForBoardEntry(paneId) {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const result = await paneSendRequest('secrets.get', { key: 'boardState' })
+async function waitForBoardEntry(paneId, maxAttempts = 10, delayMs = 300) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
     if (result?.value) {
       const board = JSON.parse(result.value)
       const entry = board.paneToNode?.[paneId]
       if (entry) return { ...entry, projectId: board.projectId }
     }
-    await new Promise(r => setTimeout(r, 300))
+    await new Promise(r => setTimeout(r, delayMs))
   }
   return null
+}
+
+async function checkActiveProject() {
+  const result = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
+  if (!result?.value) return false
+  const board = JSON.parse(result.value)
+  return !!board.projectId
 }
 
 function renderNode(node) {
