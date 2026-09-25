@@ -79,12 +79,7 @@ async function initNodePane() {
     let entry = await waitForBoardEntry(myPaneId)
 
     if (!entry && mySurfaceId && SURFACE_TO_NODE_TYPE[mySurfaceId]) {
-      const hasActiveProject = await checkActiveProject()
-      if (hasActiveProject) {
-        entry = await waitForBoardEntry(myPaneId, 20, 500)
-      } else {
-        entry = await autoCreateNode(myPaneId, mySurfaceId)
-      }
+      entry = await autoCreateNode(myPaneId, mySurfaceId)
     }
 
     if (!entry) {
@@ -181,7 +176,7 @@ async function autoCreateNode(paneId, surfaceId) {
   return { ...board.paneToNode[paneId], projectId: board.projectId }
 }
 
-async function waitForBoardEntry(paneId, maxAttempts = 10, delayMs = 300) {
+async function waitForBoardEntry(paneId, maxAttempts = 5, delayMs = 300) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const result = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
     if (result?.value) {
@@ -192,13 +187,6 @@ async function waitForBoardEntry(paneId, maxAttempts = 10, delayMs = 300) {
     await new Promise(r => setTimeout(r, delayMs))
   }
   return null
-}
-
-async function checkActiveProject() {
-  const result = await paneSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
-  if (!result?.value) return false
-  const board = JSON.parse(result.value)
-  return !!board.projectId
 }
 
 function renderNode(node) {
