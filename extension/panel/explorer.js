@@ -93,30 +93,9 @@ async function refreshProjects() {
   }
 }
 
-async function collectAllWheelPaneIds() {
-  const result = await explorerSendRequest('secrets.get', { key: 'boardState' }).catch(() => null)
-  if (!result?.value) return []
-
-  const board = JSON.parse(result.value)
-  const ids = new Set()
-
-  for (const pid of Object.keys(board.paneToNode || {})) ids.add(pid)
-  for (const entry of Object.values(board.closedNodes || {})) {
-    if (entry.closedPaneId) ids.add(entry.closedPaneId)
-  }
-
-  return [...ids]
-}
-
 async function killAllWheelPanes() {
   suppressPaneRemoved = true
-
-  const paneIds = await collectAllWheelPaneIds()
-
-  for (const pid of paneIds) {
-    await explorerSendRequest('canvas.killPane', { paneId: pid }).catch(() => {})
-  }
-
+  await explorerSendRequest('canvas.killAllPanes', {}).catch(() => {})
   suppressPaneRemoved = false
 }
 
