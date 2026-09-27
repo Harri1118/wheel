@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// wheel-api.js exports via CJS tail so we can require it directly.
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { WheelApi } = require('../panel/wheel-api.js')
+import { WheelApi } from '../src/wheel-api'
 
 let fetchMock: ReturnType<typeof vi.fn>
 

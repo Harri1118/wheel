@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { wheelToCanvas, buildAgentPrompt, buildNoteBody, buildSpawnPlan } = require('../panel/spawn-plan.js')
+import { wheelToCanvas, buildAgentPrompt, buildNoteBody, buildSpawnPlan } from '../src/spawn-plan'
 
 describe('wheelToCanvas', () => {
   it('scales and offsets position', () => {

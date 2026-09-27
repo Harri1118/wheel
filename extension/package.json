@@ -3,10 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p .",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@agentgrid/sdk": "link:/Users/harrisonkmckenna18/agent-grid/.agent-grid/worktrees/sdk/packages/sdk"
   }
 }

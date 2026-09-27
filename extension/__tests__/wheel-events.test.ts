@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { WheelEventSource } = require('../panel/wheel-events.js')
+import { WheelEventSource } from '../src/wheel-events'
 
 class MockWebSocket {
   static OPEN = 1

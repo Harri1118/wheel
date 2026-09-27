@@ -1,927 +1,1146 @@
-const ext = window.agentGridExtension
-let inspectorReqId = 0
-let inspectorApi = null
-let logPollTimer = null
-let logCursor = 0
-let currentNodeId = null
-let boardState = null
-
-function inspectorSendRequest(method, params) {
-  return new Promise((resolve, reject) => {
-    const id = `insp-${++inspectorReqId}`
-    const cleanup = ext.onMessage((msg) => {
-      if (msg.kind !== 'response' || msg.id !== id) return
-      cleanup()
-      if (msg.ok) resolve(msg.result)
-      else reject(new Error(msg.error))
-    })
-    ext.postMessage({ kind: 'request', id, method, params })
-  })
-}
-
-const $empty = document.getElementById('inspector-empty')
-const $content = document.getElementById('inspector-content')
-
-function showEmpty(message) {
-  $empty.textContent = message || 'No Wheel node selected.'
-  $empty.hidden = false
-  $content.hidden = true
-  stopLogPolling()
-}
-
-function showNode(entry, paneId) {
-  $empty.hidden = true
-  $content.hidden = false
-  $content.textContent = ''
-
-  currentNodeId = entry.nodeId
-
-  const header = document.createElement('div')
-  header.className = 'node-header'
-
-  const badge = document.createElement('span')
-  badge.className = `node-type-badge ${entry.nodeType}`
-  badge.textContent = entry.nodeType
-  header.appendChild(badge)
-
-  const name = document.createElement('span')
-  name.className = 'node-name'
-  name.textContent = entry.nodeName
-  header.appendChild(name)
-
-  $content.appendChild(header)
-
-  renderEditableConfig(entry)
-  renderWiresSection(entry, paneId)
-
-  if (entry.nodeType === 'agent') {
-    renderAgentLog(entry)
-  }
-}
-
-// ---- Editable config fields per node type ----
-
-const HARNESS_OPTIONS = [
-  { value: 'claude', label: 'Claude Code' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'opencode', label: 'OpenCode' },
-  { value: 'cursor', label: 'Cursor' },
-  { value: 'grok', label: 'Grok' },
-  { value: 'devin', label: 'Devin' },
-  { value: 'kimi', label: 'Kimi' },
-  { value: 'antigravity', label: 'Antigravity' },
-]
-
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE']
-const RESPONSE_MODES = ['ack', 'script']
-const SCRIPT_LANGUAGES = ['ts', 'js', 'python']
-const MCP_TRANSPORTS = ['stdio', 'http']
-
-function renderEditableConfig(entry) {
-  const cfg = entry.nodeConfig || {}
-  const section = document.createElement('div')
-  section.className = 'section'
-  section.id = 'config-section'
-
-  switch (entry.nodeType) {
-    case 'agent':
-      renderAgentFields(section, cfg)
-      break
-    case 'ctx':
-      renderCtxFields(section, cfg)
-      break
-    case 'table':
-      renderTableFields(section, cfg)
-      break
-    case 'endpoint':
-      renderEndpointFields(section, cfg)
-      break
-    case 'script':
-      renderScriptFields(section, cfg)
-      break
-    case 'mcp':
-      renderMcpFields(section, cfg)
-      break
-    case 'vault':
-      renderVaultFields(section, cfg)
-      break
-    case 'chest':
-      break
-    case 'tool':
-      renderToolFields(section, cfg)
-      break
-  }
-
-  const saveRow = document.createElement('div')
-  saveRow.className = 'save-row'
-
-  const status = document.createElement('span')
-  status.className = 'save-status'
-  status.id = 'inspector-save-status'
-  saveRow.appendChild(status)
-
-  const saveBtn = document.createElement('button')
-  saveBtn.className = 'btn-sm primary'
-  saveBtn.textContent = 'Save'
-  saveBtn.id = 'inspector-save-btn'
-  saveBtn.addEventListener('click', () => saveConfig(entry))
-  saveRow.appendChild(saveBtn)
-
-  section.appendChild(saveRow)
-  $content.appendChild(section)
-}
-
-function renderAgentFields(section, cfg) {
-  appendSelect(section, 'harness', 'Harness', HARNESS_OPTIONS, cfg.harness || 'claude')
-  appendInput(section, 'model', 'Model', cfg.model || '', 'Leave empty for harness default')
-  appendTextarea(section, 'system_prompt', 'System Prompt', cfg.system_prompt || '', 'Instructions for this agent...')
-  appendToggle(section, 'run_on_startup', 'Start with project', !!cfg.run_on_startup)
-  appendToggle(section, 'ephemeral_context', 'Clear context after each turn', !!cfg.ephemeral_context)
-}
-
-function renderCtxFields(section, cfg) {
-  appendTextarea(section, 'markdown', 'Content (Markdown)', cfg.markdown || '', 'Context content...')
-}
-
-function renderTableFields(section, cfg) {
-  const columns = cfg.columns || []
-  const label = document.createElement('div')
-  label.className = 'field-label'
-  label.textContent = `Columns (${columns.length})`
-  section.appendChild(label)
-
-  const container = document.createElement('div')
-  container.id = 'table-columns'
-  container.className = 'columns-list'
-
-  for (let i = 0; i < columns.length; i++) {
-    appendColumnRow(container, columns[i], i)
-  }
-
-  section.appendChild(container)
-
-  const addBtn = document.createElement('button')
-  addBtn.className = 'btn-sm'
-  addBtn.textContent = '+ Column'
-  addBtn.addEventListener('click', () => {
-    appendColumnRow(container, { name: '', type: 'text' }, container.children.length)
-  })
-  section.appendChild(addBtn)
-}
-
-function appendColumnRow(container, col, index) {
-  const row = document.createElement('div')
-  row.className = 'column-row'
-
-  const nameInput = document.createElement('input')
-  nameInput.className = 'field-input'
-  nameInput.value = col.name || ''
-  nameInput.placeholder = 'column name'
-  nameInput.dataset.colIndex = index
-  nameInput.dataset.colField = 'name'
-  row.appendChild(nameInput)
-
-  const typeSelect = document.createElement('select')
-  typeSelect.className = 'field-select'
-  typeSelect.dataset.colIndex = index
-  typeSelect.dataset.colField = 'type'
-  for (const t of ['text', 'integer', 'real', 'blob', 'json']) {
-    const opt = document.createElement('option')
-    opt.value = t
-    opt.textContent = t
-    if (t === (col.type || 'text')) opt.selected = true
-    typeSelect.appendChild(opt)
-  }
-  row.appendChild(typeSelect)
-
-  const removeBtn = document.createElement('button')
-  removeBtn.className = 'btn-sm danger'
-  removeBtn.textContent = '\u00d7'
-  removeBtn.addEventListener('click', () => row.remove())
-  row.appendChild(removeBtn)
-
-  container.appendChild(row)
-}
-
-function renderEndpointFields(section, cfg) {
-  appendSelect(section, 'method', 'Method', HTTP_METHODS.map(m => ({ value: m, label: m })), (cfg.method || 'POST').toUpperCase())
-  appendInput(section, 'path', 'Path', cfg.path || '/', '/path')
-  appendSelect(section, 'response_mode', 'Response Mode', RESPONSE_MODES.map(m => ({ value: m, label: m })), cfg.response_mode || 'ack')
-}
-
-function renderScriptFields(section, cfg) {
-  appendSelect(section, 'language', 'Language', SCRIPT_LANGUAGES.map(l => ({ value: l, label: l })), cfg.language || 'ts')
-  appendTextarea(section, 'source', 'Source', cfg.source || '', 'Script source code...')
-}
-
-function renderMcpFields(section, cfg) {
-  const transport = cfg.transport || 'stdio'
-  appendSelect(section, 'transport', 'Transport', MCP_TRANSPORTS.map(t => ({ value: t, label: t })), transport)
-
-  if (transport === 'stdio') {
-    appendInput(section, 'command', 'Command', cfg.command || '', 'e.g. npx -y @modelcontextprotocol/server')
-  } else {
-    appendInput(section, 'url', 'URL', cfg.url || '', 'https://...')
-  }
-}
-
-function renderVaultFields(section, cfg) {
-  const keys = cfg.keys || []
-  const label = document.createElement('div')
-  label.className = 'field-label'
-  label.textContent = `Secret Keys (${keys.length})`
-  section.appendChild(label)
-
-  const container = document.createElement('div')
-  container.id = 'vault-keys'
-
-  for (const k of keys) {
-    appendVaultKeyRow(container, k)
-  }
-
-  section.appendChild(container)
-
-  const addBtn = document.createElement('button')
-  addBtn.className = 'btn-sm'
-  addBtn.textContent = '+ Key'
-  addBtn.addEventListener('click', () => appendVaultKeyRow(container, ''))
-  section.appendChild(addBtn)
-}
-
-function appendVaultKeyRow(container, key) {
-  const row = document.createElement('div')
-  row.className = 'column-row'
-
-  const input = document.createElement('input')
-  input.className = 'field-input vault-key-input'
-  input.value = key
-  input.placeholder = 'KEY_NAME'
-  row.appendChild(input)
-
-  const removeBtn = document.createElement('button')
-  removeBtn.className = 'btn-sm danger'
-  removeBtn.textContent = '\u00d7'
-  removeBtn.addEventListener('click', () => row.remove())
-  row.appendChild(removeBtn)
-
-  container.appendChild(row)
-}
-
-function renderToolFields(section, cfg) {
-  const label = document.createElement('div')
-  label.className = 'field-label'
-  label.textContent = 'Tool nodes are configured via import. Use the Wheel API tool handler.'
-  section.appendChild(label)
-
-  if (cfg.base_url) {
-    appendInput(section, 'base_url', 'Base URL', cfg.base_url, '')
-  }
-}
-
-// ---- Field helpers ----
-
-function appendInput(parent, id, label, value, placeholder) {
-  const group = document.createElement('div')
-  group.className = 'field-group'
-
-  const lbl = document.createElement('div')
-  lbl.className = 'field-label'
-  lbl.textContent = label
-  group.appendChild(lbl)
-
-  const input = document.createElement('input')
-  input.className = 'field-input'
-  input.id = `field-${id}`
-  input.type = 'text'
-  input.value = value
-  if (placeholder) input.placeholder = placeholder
-  group.appendChild(input)
-
-  parent.appendChild(group)
-}
-
-function appendTextarea(parent, id, label, value, placeholder) {
-  const group = document.createElement('div')
-  group.className = 'field-group'
-
-  const lbl = document.createElement('div')
-  lbl.className = 'field-label'
-  lbl.textContent = label
-  group.appendChild(lbl)
-
-  const textarea = document.createElement('textarea')
-  textarea.className = 'field-textarea'
-  textarea.id = `field-${id}`
-  textarea.value = value
-  textarea.rows = 4
-  if (placeholder) textarea.placeholder = placeholder
-  group.appendChild(textarea)
-
-  parent.appendChild(group)
-}
-
-function appendSelect(parent, id, label, options, selected) {
-  const group = document.createElement('div')
-  group.className = 'field-group'
-
-  const lbl = document.createElement('div')
-  lbl.className = 'field-label'
-  lbl.textContent = label
-  group.appendChild(lbl)
-
-  const select = document.createElement('select')
-  select.className = 'field-select'
-  select.id = `field-${id}`
-
-  for (const opt of options) {
-    const o = document.createElement('option')
-    o.value = typeof opt === 'object' ? opt.value : opt
-    o.textContent = typeof opt === 'object' ? opt.label : opt
-    if (o.value === selected) o.selected = true
-    select.appendChild(o)
-  }
-
-  group.appendChild(select)
-  parent.appendChild(group)
-}
-
-function appendToggle(parent, id, label, checked) {
-  const row = document.createElement('div')
-  row.className = 'toggle-row'
-
-  const toggle = document.createElement('label')
-  toggle.className = 'toggle-switch'
-
-  const input = document.createElement('input')
-  input.type = 'checkbox'
-  input.id = `field-${id}`
-  input.checked = checked
-
-  const slider = document.createElement('span')
-  slider.className = 'toggle-slider'
-
-  toggle.appendChild(input)
-  toggle.appendChild(slider)
-  row.appendChild(toggle)
-
-  const text = document.createElement('span')
-  text.className = 'toggle-label'
-  text.textContent = label
-  row.appendChild(text)
-
-  parent.appendChild(row)
-}
-
-// ---- Save config ----
-
-async function saveConfig(entry) {
-  if (!inspectorApi || !boardState?.projectId) return
-
-  const statusEl = document.getElementById('inspector-save-status')
-  const saveBtn = document.getElementById('inspector-save-btn')
-  if (saveBtn) saveBtn.disabled = true
-  if (statusEl) { statusEl.className = 'save-status'; statusEl.textContent = 'Saving...' }
-
-  try {
-    const config = collectConfig(entry.nodeType)
-    await inspectorApi.patchNode(boardState.projectId, entry.nodeId, { config })
-
-    entry.nodeConfig = config
-    updateBoardStateEntry(entry)
-
-    if (statusEl) { statusEl.className = 'save-status ok'; statusEl.textContent = 'Saved' }
-    setTimeout(() => { if (statusEl) statusEl.textContent = '' }, 2000)
-  } catch (err) {
-    if (statusEl) { statusEl.className = 'save-status err'; statusEl.textContent = err.message }
-  } finally {
-    if (saveBtn) saveBtn.disabled = false
-  }
-}
-
-function collectConfig(nodeType) {
-  const val = (id) => document.getElementById(`field-${id}`)?.value || ''
-  const checked = (id) => document.getElementById(`field-${id}`)?.checked || false
-
-  switch (nodeType) {
-    case 'agent':
-      return {
-        harness: val('harness') || 'claude',
-        system_prompt: val('system_prompt'),
-        model: val('model') || undefined,
-        run_on_startup: checked('run_on_startup'),
-        ephemeral_context: checked('ephemeral_context'),
-      }
-    case 'ctx':
-      return { markdown: val('markdown') }
-    case 'table':
-      return { columns: collectTableColumns() }
-    case 'endpoint':
-      return {
-        method: val('method') || 'POST',
-        path: val('path') || '/',
-        response_mode: val('response_mode') || 'ack',
-      }
-    case 'script':
-      return {
-        language: val('language') || 'ts',
-        source: val('source') || '// empty',
-      }
-    case 'mcp': {
-      const transport = val('transport') || 'stdio'
-      if (transport === 'stdio') return { transport: 'stdio', command: val('command') || 'echo' }
-      return { transport: 'http', url: val('url') || 'https://example.com' }
+"use strict";
+(() => {
+  // ../../agent-grid/.agent-grid/worktrees/sdk/packages/sdk/dist/index.js
+  var Tools = class {
+    constructor(rpc) {
+      this.rpc = rpc;
     }
-    case 'vault':
-      return { keys: collectVaultKeys() }
-    case 'chest':
-      return {}
-    case 'tool':
-      return undefined
-    default:
-      return undefined
-  }
-}
-
-function collectTableColumns() {
-  const container = document.getElementById('table-columns')
-  if (!container) return []
-  const columns = []
-  for (const row of container.children) {
-    const nameInput = row.querySelector('input')
-    const typeSelect = row.querySelector('select')
-    if (nameInput?.value) {
-      columns.push({ name: nameInput.value, type: typeSelect?.value || 'text' })
+    rpc;
+    settle(callId, answer) {
+      this.rpc.notify("tools.settle", { callId, ...answer });
     }
-  }
-  return columns
-}
-
-function collectVaultKeys() {
-  const container = document.getElementById('vault-keys')
-  if (!container) return []
-  const keys = []
-  for (const row of container.children) {
-    const input = row.querySelector('.vault-key-input')
-    if (input?.value) keys.push(input.value)
-  }
-  return keys
-}
-
-async function updateBoardStateEntry(entry) {
-  try {
-    await reloadBoardState()
-    if (boardState?.paneToNode) {
-      for (const [pid, e] of Object.entries(boardState.paneToNode)) {
-        if (e.nodeId === entry.nodeId) {
-          e.nodeConfig = entry.nodeConfig
+    invoke(toolName, input) {
+      return this.rpc.request("tools.invoke", { toolName, input: input ?? {} });
+    }
+    onInvoke(toolName, handler) {
+      return this.rpc.on("tool", async (payload) => {
+        const call = payload;
+        if (call.toolName !== toolName) {
+          return;
         }
+        this.settle(call.callId, await answerFrom(() => handler(call.input)));
+      });
+    }
+  };
+  async function answerFrom(produce) {
+    try {
+      return { result: await produce() };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  }
+  var Agent = class {
+    constructor(rpc) {
+      this.rpc = rpc;
+    }
+    rpc;
+    sendPrompt(text) {
+      return this.rpc.request("agent.sendPrompt", { text });
+    }
+    onAction(handler) {
+      return this.rpc.on("agent.action", async (payload) => {
+        const { callId, action, data } = payload;
+        this.rpc.notify("tools.settle", { callId, ...await answerFrom(() => handler(action, data ?? {})) });
+      });
+    }
+    onReadState(handler) {
+      return this.rpc.on("agent.readState", async (payload) => {
+        const { callId } = payload;
+        this.rpc.notify("tools.settle", { callId, ...await answerFrom(handler) });
+      });
+    }
+  };
+  var Canvas = class {
+    constructor(rpc) {
+      this.rpc = rpc;
+    }
+    rpc;
+    spawn(options) {
+      return this.rpc.request("canvas.spawnPane", options);
+    }
+    kill(paneId) {
+      return this.rpc.request("canvas.killPane", { paneId });
+    }
+    update(options) {
+      return this.rpc.request("canvas.updatePane", options);
+    }
+    move(moves) {
+      return this.rpc.request("canvas.movePanes", { moves });
+    }
+    getLayouts() {
+      return this.rpc.request("canvas.getLayouts");
+    }
+    applyLayout(layout) {
+      return this.rpc.request("canvas.applyLayout", layout);
+    }
+    clearLayout() {
+      return this.rpc.request("canvas.clearLayout");
+    }
+    startWireDrag(options) {
+      return this.rpc.request("canvas.startWireDrag", options);
+    }
+    endWireDrag(params) {
+      return this.rpc.request("canvas.endWireDrag", params);
+    }
+  };
+  var Events = class {
+    constructor(rpc) {
+      this.rpc = rpc;
+    }
+    rpc;
+    on(topic, handler) {
+      return this.rpc.on(topic, handler);
+    }
+  };
+  var DEFAULT_REQUEST_TIMEOUT_MS = 3e4;
+  var REQUEST_ID_PREFIX = "sdk-";
+  var Rpc = class {
+    bridge;
+    nextId = 0;
+    pending = /* @__PURE__ */ new Map();
+    eventListeners = /* @__PURE__ */ new Map();
+    cleanup;
+    constructor(bridge) {
+      this.bridge = bridge;
+      this.cleanup = bridge.onMessage((message) => this.handleMessage(message));
+    }
+    request(method, params, opts) {
+      const id = `${REQUEST_ID_PREFIX}${this.nextId += 1}`;
+      const timeoutMs = opts?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS;
+      const request = { kind: "request", id, method, params };
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.pending.delete(id);
+          reject(new Error(`@agentgrid/sdk: request "${method}" timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        this.pending.set(id, { method, resolve, reject, timer });
+        this.bridge.postMessage(request);
+      });
+    }
+    notify(method, params) {
+      const id = `${REQUEST_ID_PREFIX}${this.nextId += 1}`;
+      const request = { kind: "request", id, method, params };
+      this.bridge.postMessage(request);
+    }
+    on(topic, handler) {
+      const handlers = this.eventListeners.get(topic) ?? /* @__PURE__ */ new Set();
+      handlers.add(handler);
+      this.eventListeners.set(topic, handlers);
+      return () => {
+        handlers.delete(handler);
+      };
+    }
+    destroy() {
+      this.cleanup();
+      for (const request of this.pending.values()) {
+        clearTimeout(request.timer);
+        request.reject(new Error(`@agentgrid/sdk: request "${request.method}" cancelled because the client was destroyed`));
       }
-      await inspectorSendRequest('secrets.set', {
-        key: 'boardState',
-        value: JSON.stringify(boardState),
-      })
+      this.pending.clear();
+      this.eventListeners.clear();
     }
-  } catch {
-    // board state update is best-effort
-  }
-}
-
-// ---- Wire matrix (mirrors wheel-core/src/wire.rs) ----
-
-const WIRE_MATRIX = [
-  ['agent', 'send', 'agent'],
-  ['agent', 'read', 'ctx'],
-  ['agent', 'write', 'ctx'],
-  ['agent', 'read', 'table'],
-  ['agent', 'write', 'table'],
-  ['agent', 'read', 'vault'],
-  ['agent', 'read', 'chest'],
-  ['agent', 'write', 'chest'],
-  ['agent', 'read', 'script'],
-  ['agent', 'read', 'mcp'],
-  ['agent', 'read', 'tool'],
-  ['ctx', 'send', 'agent'],
-  ['endpoint', 'send', 'agent'],
-  ['endpoint', 'write', 'table'],
-  ['endpoint', 'send', 'script'],
-  ['endpoint', 'read', 'vault'],
-  ['script', 'send', 'agent'],
-  ['script', 'read', 'ctx'],
-  ['script', 'write', 'ctx'],
-  ['script', 'read', 'table'],
-  ['script', 'write', 'table'],
-  ['script', 'read', 'chest'],
-  ['script', 'write', 'chest'],
-  ['script', 'read', 'vault'],
-  ['script', 'read', 'tool'],
-  ['tool', 'read', 'vault'],
-]
-
-function wireAllowed(fromType, wireType, toType) {
-  return WIRE_MATRIX.some(([f, w, t]) => f === fromType && w === wireType && t === toType)
-}
-
-function allowedWireTypes(fromType, toType) {
-  return ['read', 'write', 'send'].filter(w => wireAllowed(fromType, w, toType))
-}
-
-function allowedTargets(fromType) {
-  const targets = new Set()
-  for (const [f, , t] of WIRE_MATRIX) {
-    if (f === fromType) targets.add(t)
-  }
-  return targets
-}
-
-// ---- Wires section ----
-
-function renderWiresSection(entry, paneId) {
-  const section = document.createElement('div')
-  section.className = 'section'
-  section.id = 'wires-section'
-
-  const title = document.createElement('div')
-  title.className = 'field-label'
-  title.textContent = 'Wires'
-  title.style.marginBottom = '4px'
-  section.appendChild(title)
-
-  const wireList = document.createElement('div')
-  wireList.id = 'wire-list'
-
-  const wires = entry.wires || []
-  if (wires.length === 0) {
-    const empty = document.createElement('div')
-    empty.className = 'wire-empty'
-    empty.textContent = 'No wires.'
-    wireList.appendChild(empty)
-  }
-
-  for (const w of wires) {
-    const row = document.createElement('div')
-    row.className = 'wire-item'
-
-    const dir = document.createElement('span')
-    dir.className = 'wire-dir'
-    dir.textContent = w.direction === 'outgoing' ? '\u2192 ' : '\u2190 '
-    row.appendChild(dir)
-
-    const wireType = document.createElement('span')
-    wireType.className = `wire-type wire-type-${w.type}`
-    wireType.textContent = w.type
-    row.appendChild(wireType)
-
-    const peer = document.createElement('span')
-    peer.className = 'wire-peer'
-    peer.textContent = ` ${w.direction === 'outgoing' ? 'to' : 'from'} ${w.peerName}`
-    row.appendChild(peer)
-
-    const removeBtn = document.createElement('button')
-    removeBtn.className = 'btn-sm danger wire-remove'
-    removeBtn.textContent = '\u00d7'
-    removeBtn.addEventListener('click', () => removeWire(entry, w, row))
-    row.appendChild(removeBtn)
-
-    wireList.appendChild(row)
-  }
-
-  section.appendChild(wireList)
-
-  const validTargets = allowedTargets(entry.nodeType)
-  const peers = []
-  if (boardState?.paneToNode) {
-    for (const [, e] of Object.entries(boardState.paneToNode)) {
-      if (e.nodeId === entry.nodeId) continue
-      if (!validTargets.has(e.nodeType)) continue
-      peers.push(e)
+    handleMessage(message) {
+      if (isResponse(message)) {
+        this.settleRequest(message);
+        return;
+      }
+      if (isEvent(message)) {
+        this.dispatchEvent(message);
+      }
     }
-  }
-
-  if (peers.length === 0) {
-    if (validTargets.size === 0) {
-      const hint = document.createElement('div')
-      hint.className = 'wire-empty'
-      hint.textContent = `${entry.nodeType} nodes have no outgoing wires.`
-      section.appendChild(hint)
+    settleRequest(response) {
+      const request = this.pending.get(response.id);
+      if (!request) {
+        return;
+      }
+      clearTimeout(request.timer);
+      this.pending.delete(response.id);
+      if (response.ok) {
+        request.resolve(response.result);
+        return;
+      }
+      request.reject(new Error(response.error ?? "Unknown host error"));
     }
-    $content.appendChild(section)
-    return
-  }
-
-  const addRow = document.createElement('div')
-  addRow.className = 'wire-add-row'
-
-  const peerSelect = document.createElement('select')
-  peerSelect.className = 'field-select wire-peer-select'
-  peerSelect.id = 'wire-peer-select'
-
-  const defaultOpt = document.createElement('option')
-  defaultOpt.value = ''
-  defaultOpt.textContent = 'Target node...'
-  peerSelect.appendChild(defaultOpt)
-
-  for (const e of peers) {
-    const opt = document.createElement('option')
-    opt.value = e.nodeId
-    opt.textContent = `${e.nodeName} (${e.nodeType})`
-    opt.dataset.nodeType = e.nodeType
-    peerSelect.appendChild(opt)
-  }
-  addRow.appendChild(peerSelect)
-
-  const typeSelect = document.createElement('select')
-  typeSelect.className = 'field-select wire-type-select'
-  typeSelect.id = 'wire-type-select'
-  addRow.appendChild(typeSelect)
-
-  function updateTypeOptions() {
-    typeSelect.textContent = ''
-    const selectedOpt = peerSelect.selectedOptions[0]
-    const targetType = selectedOpt?.dataset?.nodeType
-    if (!targetType) {
-      const placeholder = document.createElement('option')
-      placeholder.value = ''
-      placeholder.textContent = 'type...'
-      typeSelect.appendChild(placeholder)
-      return
+    dispatchEvent(event) {
+      const handlers = this.eventListeners.get(event.topic);
+      if (!handlers) {
+        return;
+      }
+      for (const handler of handlers) {
+        handler(event.payload);
+      }
     }
-    const types = allowedWireTypes(entry.nodeType, targetType)
-    for (const t of types) {
-      const opt = document.createElement('option')
-      opt.value = t
-      opt.textContent = t
-      typeSelect.appendChild(opt)
+  };
+  function isResponse(message) {
+    const candidate = message;
+    return candidate?.kind === "response" && typeof candidate.id === "string";
+  }
+  function isEvent(message) {
+    const candidate = message;
+    return candidate?.kind === "event" && typeof candidate.topic === "string";
+  }
+  var Secrets = class {
+    constructor(rpc) {
+      this.rpc = rpc;
     }
-  }
-
-  peerSelect.addEventListener('change', updateTypeOptions)
-  updateTypeOptions()
-
-  const addBtn = document.createElement('button')
-  addBtn.className = 'btn-sm primary'
-  addBtn.textContent = '+ Wire'
-  addBtn.addEventListener('click', () => addWire(entry, paneId))
-  addRow.appendChild(addBtn)
-
-  section.appendChild(addRow)
-  $content.appendChild(section)
-}
-
-async function addWire(entry, paneId) {
-  if (!inspectorApi || !boardState?.projectId) return
-
-  const peerNodeId = document.getElementById('wire-peer-select')?.value
-  const wireType = document.getElementById('wire-type-select')?.value
-  if (!peerNodeId || !wireType) return
-
-  try {
-    await inspectorApi.createWire(boardState.projectId, entry.nodeId, peerNodeId, wireType)
-    await reloadBoardState()
-    await syncAllWireConnections()
-
-    const updatedEntry = boardState?.paneToNode && Object.values(boardState.paneToNode).find(e => e.nodeId === entry.nodeId)
-    if (updatedEntry) {
-      await refreshEntryWires(entry)
-      showNode({ ...entry, wires: entry.wires }, paneId)
+    rpc;
+    list() {
+      return this.rpc.request("secrets.list");
     }
-  } catch (err) {
-    const statusEl = document.getElementById('inspector-save-status')
-    if (statusEl) { statusEl.className = 'save-status err'; statusEl.textContent = err.message }
+    async get(key) {
+      const secret = await this.rpc.request("secrets.get", { key });
+      return secret.value ?? null;
+    }
+    set(key, value) {
+      return this.rpc.request("secrets.set", { key, value });
+    }
+    clear(key) {
+      return this.rpc.request("secrets.clear", { key });
+    }
+  };
+  var State = class {
+    constructor(bridge) {
+      this.bridge = bridge;
+    }
+    bridge;
+    persist(data) {
+      this.bridge.persistState(data);
+    }
+    load() {
+      return this.bridge.loadState();
+    }
+  };
+  var MISSING_BRIDGE_MESSAGE = "@agentgrid/sdk: window.agentGridExtension not found \u2014 is this running inside an AgentGrid extension panel?";
+  async function createPanel() {
+    const bridge = globalThis.agentGridExtension;
+    if (!bridge) {
+      throw new Error(MISSING_BRIDGE_MESSAGE);
+    }
+    const rpc = new Rpc(bridge);
+    const description = await rpc.request("host.describe");
+    const events = new Events(rpc);
+    return {
+      description,
+      rpc,
+      canvas: new Canvas(rpc),
+      secrets: new Secrets(rpc),
+      events,
+      tools: new Tools(rpc),
+      state: new State(bridge),
+      agent: new Agent(rpc),
+      on: (topic, handler) => events.on(topic, handler),
+      destroy: () => rpc.destroy()
+    };
   }
-}
-
-async function removeWire(entry, wire, row) {
-  if (!inspectorApi || !boardState?.projectId) return
-
-  const peerNodeId = findNodeIdByName(wire.peerName)
-  if (!peerNodeId) return
-
-  const fromId = wire.direction === 'outgoing' ? entry.nodeId : peerNodeId
-  const toId = wire.direction === 'outgoing' ? peerNodeId : entry.nodeId
-
-  try {
-    await inspectorApi.deleteWire(boardState.projectId, fromId, toId, wire.type)
-    row.remove()
-    await reloadBoardState()
-    await syncAllWireConnections()
-  } catch (err) {
-    const statusEl = document.getElementById('inspector-save-status')
-    if (statusEl) { statusEl.className = 'save-status err'; statusEl.textContent = err.message }
+  function createWireMatrix(rules) {
+    return { rules };
   }
-}
-
-function findNodeIdByName(name) {
-  if (!boardState?.paneToNode) return null
-  for (const e of Object.values(boardState.paneToNode)) {
-    if (e.nodeName === name) return e.nodeId
+  function allowedWireTypes(matrix, fromType, toType) {
+    return matrix.rules.filter((rule) => rule.from === fromType && rule.to === toType).map((rule) => rule.type);
   }
-  return null
-}
+  function allowedTargets(matrix, fromType) {
+    return matrix.rules.filter((rule) => rule.from === fromType).map((rule) => ({ toType: rule.to, wireType: rule.type }));
+  }
 
-async function refreshEntryWires(entry) {
-  if (!inspectorApi || !boardState?.projectId) return
-  try {
-    const apiBoard = await inspectorApi.getBoard(boardState.projectId)
-    const wires = apiBoard.wires || []
-    const nodesById = {}
-    for (const n of (apiBoard.nodes || [])) nodesById[n.id] = n
-
-    entry.wires = wires
-      .filter(w => w.from === entry.nodeId || w.to === entry.nodeId)
-      .map(w => ({
+  // src/board-state.ts
+  var BOARD_STATE_KEY = "boardState";
+  async function readBoardState(secrets) {
+    const raw = await secrets.get(BOARD_STATE_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw);
+    return {
+      ...stored,
+      projectId: stored.projectId ?? null,
+      paneToNode: stored.paneToNode ?? {},
+      nodesById: stored.nodesById ?? {}
+    };
+  }
+  function writeBoardState(secrets, board) {
+    return secrets.set(BOARD_STATE_KEY, JSON.stringify(board));
+  }
+  function summarizeWires(nodeId, wires, nodesById) {
+    return wires.filter((w) => w.from === nodeId || w.to === nodeId).map((w) => {
+      const peer = nodesById[w.from === nodeId ? w.to : w.from];
+      return {
         type: w.type,
-        direction: w.from === entry.nodeId ? 'outgoing' : 'incoming',
-        peerName: (nodesById[w.from === entry.nodeId ? w.to : w.from] || {}).name || 'unknown',
-        peerType: (nodesById[w.from === entry.nodeId ? w.to : w.from] || {}).type || 'unknown',
-      }))
-  } catch {
-    // wire refresh is best-effort
+        direction: w.from === nodeId ? "outgoing" : "incoming",
+        peerName: peer?.name || "unknown",
+        peerType: peer?.type || "unknown"
+      };
+    });
   }
-}
-
-async function syncAllWireConnections() {
-  if (!inspectorApi || !boardState?.projectId) return
-
-  try {
-    const apiBoard = await inspectorApi.getBoard(boardState.projectId)
-    const wires = apiBoard.wires || []
-
-    const nodeIdToPane = {}
-    for (const [paneId, entry] of Object.entries(boardState.paneToNode || {})) {
-      nodeIdToPane[entry.nodeId] = paneId
+  async function associatePanesByWires(canvas, paneToNode, wires) {
+    const paneByNodeId = {};
+    const peersByPane = {};
+    for (const [paneId, entry] of Object.entries(paneToNode)) {
+      paneByNodeId[entry.nodeId] = paneId;
+      peersByPane[paneId] = /* @__PURE__ */ new Set();
     }
-
-    const paneAssociations = {}
-    for (const paneId of Object.keys(boardState.paneToNode || {})) {
-      paneAssociations[paneId] = new Set()
-    }
-
     for (const wire of wires) {
-      const fromPane = nodeIdToPane[wire.from]
-      const toPane = nodeIdToPane[wire.to]
+      const fromPane = paneByNodeId[wire.from];
+      const toPane = paneByNodeId[wire.to];
       if (fromPane && toPane) {
-        paneAssociations[fromPane]?.add(toPane)
-        paneAssociations[toPane]?.add(fromPane)
+        peersByPane[fromPane]?.add(toPane);
+        peersByPane[toPane]?.add(fromPane);
       }
     }
-
-    for (const [paneId, peers] of Object.entries(paneAssociations)) {
-      const associatedPaneIds = [...peers]
-      await inspectorSendRequest('canvas.updatePane', { paneId, associatedPaneIds }).catch(() => {})
+    for (const [paneId, peers] of Object.entries(peersByPane)) {
+      await canvas.update({ paneId, associatedPaneIds: [...peers] }).catch(() => {
+      });
     }
-  } catch {
-    // wire sync is best-effort
   }
-}
 
-// ---- Agent log ----
-
-function renderAgentLog(entry) {
-  const section = document.createElement('div')
-  section.className = 'section'
-
-  const title = document.createElement('div')
-  title.className = 'field-label'
-  title.textContent = 'Agent Log'
-  section.appendChild(title)
-
-  const logContainer = document.createElement('div')
-  logContainer.id = 'agent-log'
-  logContainer.className = 'agent-log'
-  section.appendChild(logContainer)
-
-  $content.appendChild(section)
-  startLogPolling(entry.nodeId)
-}
-
-function startLogPolling(nodeId) {
-  stopLogPolling()
-  if (!inspectorApi || !boardState?.projectId) return
-
-  logCursor = 0
-  fetchAgentLog(nodeId)
-  logPollTimer = setInterval(() => fetchAgentLog(nodeId), 5000)
-}
-
-function stopLogPolling() {
-  if (logPollTimer) {
-    clearInterval(logPollTimer)
-    logPollTimer = null
+  // src/dom.ts
+  function byId(id) {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`Missing #${id} element`);
+    return element;
   }
-}
+  function setSaveStatus(statusEl, tone, text) {
+    if (!statusEl) return;
+    statusEl.className = tone ? `save-status ${tone}` : "save-status";
+    statusEl.textContent = text;
+  }
 
-async function fetchAgentLog(nodeId) {
-  if (!inspectorApi || !boardState?.projectId) return
+  // src/spawn-plan.ts
+  function indexNodes(nodes) {
+    const nodesById = {};
+    for (const n of nodes) nodesById[n.id] = n;
+    return nodesById;
+  }
 
-  try {
-    const log = await inspectorApi.agentLog(boardState.projectId, nodeId, { since: logCursor })
-    const entries = Array.isArray(log) ? log : (log.entries || [])
-    if (entries.length === 0) return
+  // src/types.ts
+  var DEFAULT_API_URL = "https://wheel-api-production-28d3.up.railway.app";
+  function errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 
-    logCursor = entries[entries.length - 1].seq || entries[entries.length - 1].id || logCursor
-
-    const logContainer = document.getElementById('agent-log')
-    if (!logContainer) return
-
-    for (const entry of entries) {
-      const line = document.createElement('div')
-      line.className = 'log-line'
-      const stream = entry.stream || 'stdout'
-      if (stream === 'stderr') line.classList.add('log-stderr')
-      const text = entry.text || entry.line || entry.body || JSON.stringify(entry)
-      line.textContent = text.length > 200 ? text.slice(0, 200) + '...' : text
-      logContainer.appendChild(line)
+  // src/wheel-api.ts
+  var WheelApi = class {
+    apiUrl;
+    apiToken;
+    constructor(apiUrl, apiToken) {
+      this.apiUrl = apiUrl.replace(/\/+$/, "");
+      this.apiToken = apiToken;
     }
-
-    while (logContainer.children.length > 100) {
-      logContainer.removeChild(logContainer.firstChild)
+    async request(path, opts = {}) {
+      const headers = {};
+      if (this.apiToken) headers["x-auth-token"] = this.apiToken;
+      if (opts.body !== void 0) headers["content-type"] = "application/json";
+      if (opts.projectId) headers["x-project-id"] = opts.projectId;
+      const res = await fetch(`${this.apiUrl}${path}`, {
+        method: opts.method || "GET",
+        headers,
+        body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
+      });
+      if (!res.ok) {
+        throw new Error(await readDetailedErrorMessage(res));
+      }
+      if (res.status === 204 || opts.expect === "void") return void 0;
+      return res.json();
     }
-
-    logContainer.scrollTop = logContainer.scrollHeight
-  } catch {
-    // log fetch failed
-  }
-}
-
-// ---- Init ----
-
-async function reloadBoardState() {
-  try {
-    const result = await inspectorSendRequest('secrets.get', { key: 'boardState' })
-    if (result?.value) {
-      boardState = JSON.parse(result.value)
+    engine(projectId, ...segments) {
+      return `/v1/projects/${encodeURIComponent(projectId)}/engine/v1/${segments.map(encodeURIComponent).join("/")}`;
     }
-  } catch {
-    // reload failed
+    login(email, password) {
+      return this.postWithExplicitAuth("/v1/auth/login", { email, password }, {});
+    }
+    createToken(sessionToken, name) {
+      return this.postWithExplicitAuth("/v1/auth/tokens", { name }, { "x-auth-token": sessionToken });
+    }
+    listProjects() {
+      return this.request("/v1/projects");
+    }
+    getProject(projectId) {
+      return this.request(`/v1/projects/${encodeURIComponent(projectId)}`, { projectId });
+    }
+    createProject(name) {
+      return this.request("/v1/projects", { method: "POST", body: { name } });
+    }
+    startProject(projectId) {
+      return this.request(`/v1/projects/${encodeURIComponent(projectId)}/start`, { method: "POST", projectId });
+    }
+    stopProject(projectId) {
+      return this.request(`/v1/projects/${encodeURIComponent(projectId)}/stop`, { method: "POST", projectId });
+    }
+    async getBoard(projectId) {
+      const result = await this.request(this.engine(projectId, "board"), { projectId });
+      console.log("[wheel:api] getBoard raw response:", JSON.stringify(result));
+      return result;
+    }
+    createNode(projectId, input) {
+      return this.request(this.engine(projectId, "nodes"), { method: "POST", body: input, projectId });
+    }
+    patchNode(projectId, nodeId, patch) {
+      return this.request(this.engine(projectId, "nodes", nodeId), { method: "PATCH", body: patch, projectId });
+    }
+    deleteNode(projectId, nodeId) {
+      return this.request(this.engine(projectId, "nodes", nodeId), { method: "DELETE", projectId, expect: "void" });
+    }
+    createWire(projectId, from, to, type) {
+      return this.request(this.engine(projectId, "wires"), { method: "POST", body: { from, to, type }, projectId });
+    }
+    deleteWire(projectId, from, to, type) {
+      return this.request(this.engine(projectId, "wires"), { method: "DELETE", body: { from, to, type }, projectId, expect: "void" });
+    }
+    startAgent(projectId, nodeId) {
+      return this.request(this.engine(projectId, "agents", nodeId, "start"), { method: "POST", projectId });
+    }
+    stopAgent(projectId, nodeId) {
+      return this.request(this.engine(projectId, "agents", nodeId, "stop"), { method: "POST", projectId });
+    }
+    sendToAgent(projectId, nodeId, body) {
+      return this.request(this.engine(projectId, "agents", nodeId, "send"), { method: "POST", body: { body }, projectId });
+    }
+    agentLog(projectId, nodeId, opts = {}) {
+      const query = new URLSearchParams();
+      if (opts.since !== void 0) query.set("since", String(opts.since));
+      if (opts.stream) query.set("stream", opts.stream);
+      const queryString = query.toString();
+      const path = this.engine(projectId, "agents", nodeId, "log") + (queryString ? `?${queryString}` : "");
+      return this.request(path, { projectId });
+    }
+    queryTable(projectId, nodeId, sql) {
+      return this.request(this.engine(projectId, "tables", nodeId, "query"), { method: "POST", body: { sql }, projectId });
+    }
+    tableRows(projectId, nodeId, limit = 50, offset = 0) {
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      return this.request(this.engine(projectId, "tables", nodeId, "rows") + `?${query}`, { projectId });
+    }
+    putSecret(projectId, nodeId, key, value) {
+      return this.request(this.engine(projectId, "vault", nodeId, key), { method: "PUT", body: { value }, projectId, expect: "void" });
+    }
+    async applyBoard(projectId, board, dryRun = false) {
+      const res = await fetch(`${this.apiUrl}${this.engine(projectId, "board", "apply")}`, {
+        method: "POST",
+        headers: this.projectHeaders(projectId),
+        body: JSON.stringify({ board, dry_run: dryRun })
+      });
+      return res.json();
+    }
+    importTool(projectId, raw, format) {
+      const body = { raw };
+      if (format) body.format = format;
+      return this.request(this.engine(projectId, "tools", "import"), { method: "POST", body, projectId });
+    }
+    callTool(projectId, nodeId, op, args, dryRun = false) {
+      return this.request(this.engine(projectId, "tools", nodeId, "call"), {
+        method: "POST",
+        body: { op, args, dry_run: dryRun },
+        projectId
+      });
+    }
+    messages(projectId) {
+      return this.request(this.engine(projectId, "messages"), { projectId });
+    }
+    chestLs(projectId, nodeId, prefix = "") {
+      const query = new URLSearchParams({ prefix });
+      return this.request(this.engine(projectId, "chests", nodeId, "ls") + `?${query}`, { projectId });
+    }
+    async builderTurn(projectId, request) {
+      const res = await fetch(`${this.apiUrl}/v1/projects/${encodeURIComponent(projectId)}/builder/turns`, {
+        method: "POST",
+        headers: this.projectHeaders(projectId),
+        body: JSON.stringify(request)
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream") || !res.body) {
+        throw new Error("Builder did not return a stream");
+      }
+      return res.body;
+    }
+    async postWithExplicitAuth(path, body, authHeaders) {
+      const res = await fetch(`${this.apiUrl}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+      return res.json();
+    }
+    projectHeaders(projectId) {
+      return {
+        "x-auth-token": this.apiToken,
+        "x-project-id": projectId,
+        "content-type": "application/json"
+      };
+    }
+  };
+  async function readDetailedErrorMessage(res) {
+    try {
+      const body = await res.json();
+      console.log("[wheel:api] error response body:", JSON.stringify(body));
+      return detailedMessageFrom(body, res.status);
+    } catch {
+      return `HTTP ${res.status}`;
+    }
   }
-}
+  function detailedMessageFrom(body, status) {
+    if (typeof body === "string") return body;
+    const errorBody = body ?? {};
+    if (typeof errorBody.error === "object" && errorBody.error?.message) return errorBody.error.message;
+    if (typeof errorBody.error === "string") return errorBody.error;
+    if (typeof errorBody.message === "string") return errorBody.message;
+    if (errorBody.errors) return JSON.stringify(errorBody.errors);
+    return `HTTP ${status}: ${JSON.stringify(body)}`;
+  }
+  async function readErrorMessage(res) {
+    const statusMessage = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.error === "object" && body.error?.message) return body.error.message;
+      if (typeof body?.error === "string") return body.error;
+      return statusMessage;
+    } catch {
+      return statusMessage;
+    }
+  }
 
-function listenForInspectorEvents() {
-  ext.onMessage((msg) => {
-    if (msg.kind !== 'event') return
+  // src/wire-matrix.ts
+  var WHEEL_WIRE_RULES = [
+    ["agent", "send", "agent"],
+    ["agent", "read", "ctx"],
+    ["agent", "write", "ctx"],
+    ["agent", "read", "table"],
+    ["agent", "write", "table"],
+    ["agent", "read", "vault"],
+    ["agent", "read", "chest"],
+    ["agent", "write", "chest"],
+    ["agent", "read", "script"],
+    ["agent", "read", "mcp"],
+    ["agent", "read", "tool"],
+    ["ctx", "send", "agent"],
+    ["endpoint", "send", "agent"],
+    ["endpoint", "write", "table"],
+    ["endpoint", "send", "script"],
+    ["endpoint", "read", "vault"],
+    ["script", "send", "agent"],
+    ["script", "read", "ctx"],
+    ["script", "write", "ctx"],
+    ["script", "read", "table"],
+    ["script", "write", "table"],
+    ["script", "read", "chest"],
+    ["script", "write", "chest"],
+    ["script", "read", "vault"],
+    ["script", "read", "tool"],
+    ["tool", "read", "vault"]
+  ];
+  var WHEEL_WIRES = createWireMatrix(WHEEL_WIRE_RULES.map(([from, type, to]) => ({ from, to, type })));
+  function wheelWireTypes(fromType, toType) {
+    return allowedWireTypes(WHEEL_WIRES, fromType, toType);
+  }
+  function wheelTargetTypes(fromType) {
+    return new Set(allowedTargets(WHEEL_WIRES, fromType).map((target) => target.toType));
+  }
 
-    if (msg.topic === 'canvas.paneFocused') {
-      const paneId = msg.payload?.paneId
-      if (!paneId || !boardState) return
-
+  // src/inspector.ts
+  var HARNESS_OPTIONS = [
+    { value: "claude", label: "Claude Code" },
+    { value: "codex", label: "Codex" },
+    { value: "opencode", label: "OpenCode" },
+    { value: "cursor", label: "Cursor" },
+    { value: "grok", label: "Grok" },
+    { value: "devin", label: "Devin" },
+    { value: "kimi", label: "Kimi" },
+    { value: "antigravity", label: "Antigravity" }
+  ];
+  var HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"];
+  var RESPONSE_MODES = ["ack", "script"];
+  var SCRIPT_LANGUAGES = ["ts", "js", "python"];
+  var MCP_TRANSPORTS = ["stdio", "http"];
+  var COLUMN_TYPES = ["text", "integer", "real", "blob", "json"];
+  var NO_PROJECT_MESSAGE = "No Wheel project synced. Open a project from the Wheel Projects panel.";
+  var LOG_POLL_MS = 5e3;
+  var MAX_LOG_LINES = 100;
+  var MAX_LOG_LINE_CHARS = 200;
+  var SAVED_STATUS_CLEAR_MS = 2e3;
+  var $empty = byId("inspector-empty");
+  var $content = byId("inspector-content");
+  var panel;
+  var inspectorApi = null;
+  var boardState = null;
+  var logPollTimer = null;
+  var logCursor = 0;
+  var currentNodeId = null;
+  start();
+  async function start() {
+    try {
+      panel = await createPanel();
+      const [apiUrl, apiToken] = await Promise.all([panel.secrets.get("apiUrl"), panel.secrets.get("apiToken")]);
+      if (apiToken) {
+        inspectorApi = new WheelApi(apiUrl || DEFAULT_API_URL, apiToken);
+      }
+      boardState = await readBoardState(panel.secrets);
+    } catch {
+      boardState = null;
+    }
+    if (!boardState) {
+      showEmpty(NO_PROJECT_MESSAGE);
+      return;
+    }
+    showEmpty("Project synced. Click a Wheel node on the canvas to inspect.");
+    listenForCanvasEvents();
+  }
+  function listenForCanvasEvents() {
+    panel.events.on("canvas.paneFocused", ({ paneId }) => {
+      if (!paneId || !boardState) return;
       reloadBoardState().then(async () => {
-        const entry = boardState?.paneToNode?.[paneId]
-        if (!entry) return
-
-        await refreshEntryWires(entry)
-        showNode(entry, paneId)
-      })
-    }
-
-    if (msg.topic === 'canvas.paneRemoved') {
-      const paneId = msg.payload?.paneId
-      if (!paneId) return
-
+        const entry = boardState?.paneToNode[paneId];
+        if (!entry) return;
+        await refreshEntryWires(entry);
+        showNode(entry, paneId);
+      });
+    });
+    panel.events.on("canvas.paneRemoved", ({ paneId }) => {
+      if (!paneId) return;
       reloadBoardState().then(() => {
-        const activePanes = Object.keys(boardState?.paneToNode || {})
-        if (activePanes.length === 0) {
-          showEmpty('No Wheel project synced. Open a project from the Wheel Projects panel.')
-          return
+        const activeEntries = Object.values(boardState?.paneToNode || {});
+        if (activeEntries.length === 0) {
+          showEmpty(NO_PROJECT_MESSAGE);
+          return;
         }
-
-        if (currentNodeId) {
-          const stillExists = Object.values(boardState?.paneToNode || {}).some(e => e.nodeId === currentNodeId)
-          if (!stillExists) showEmpty('Node removed.')
+        if (currentNodeId && !activeEntries.some((e) => e.nodeId === currentNodeId)) {
+          showEmpty("Node removed.");
         }
-      })
-    }
-  })
-}
-
-async function initInspector() {
-  try {
-    const [urlResult, tokenResult, boardResult] = await Promise.all([
-      inspectorSendRequest('secrets.get', { key: 'apiUrl' }),
-      inspectorSendRequest('secrets.get', { key: 'apiToken' }),
-      inspectorSendRequest('secrets.get', { key: 'boardState' }),
-    ])
-
-    const apiUrl = urlResult?.value || 'https://wheel-api-production-28d3.up.railway.app'
-    const apiToken = tokenResult?.value || ''
-
-    if (apiUrl && apiToken) {
-      inspectorApi = new WheelApi(apiUrl, apiToken)
-    }
-
-    if (boardResult?.value) {
-      boardState = JSON.parse(boardResult.value)
-    }
-  } catch {
-    // secrets load failed
+      });
+    });
   }
-
-  if (!boardState) {
-    showEmpty('No Wheel project synced. Open a project from the Wheel Projects panel.')
-    return
+  function showEmpty(message) {
+    $empty.textContent = message || "No Wheel node selected.";
+    $empty.hidden = false;
+    $content.hidden = true;
+    stopLogPolling();
   }
-
-  showEmpty('Project synced. Click a Wheel node on the canvas to inspect.')
-  listenForInspectorEvents()
-}
-
-initInspector()
+  function showNode(entry, paneId) {
+    const header = document.createElement("div");
+    const badge = document.createElement("span");
+    const name = document.createElement("span");
+    $empty.hidden = true;
+    $content.hidden = false;
+    $content.textContent = "";
+    currentNodeId = entry.nodeId;
+    header.className = "node-header";
+    badge.className = `node-type-badge ${entry.nodeType}`;
+    badge.textContent = entry.nodeType;
+    name.className = "node-name";
+    name.textContent = entry.nodeName;
+    header.appendChild(badge);
+    header.appendChild(name);
+    $content.appendChild(header);
+    renderEditableConfig(entry);
+    renderWiresSection(entry, paneId);
+    if (entry.nodeType === "agent") {
+      renderAgentLog(entry);
+    }
+  }
+  function renderEditableConfig(entry) {
+    const cfg = entry.nodeConfig || {};
+    const section = document.createElement("div");
+    const saveRow = document.createElement("div");
+    const status = document.createElement("span");
+    const saveBtn = document.createElement("button");
+    section.className = "section";
+    section.id = "config-section";
+    renderFieldsFor(entry.nodeType, section, cfg);
+    saveRow.className = "save-row";
+    status.className = "save-status";
+    status.id = "inspector-save-status";
+    saveBtn.className = "btn-sm primary";
+    saveBtn.textContent = "Save";
+    saveBtn.id = "inspector-save-btn";
+    saveBtn.addEventListener("click", () => saveConfig(entry));
+    saveRow.appendChild(status);
+    saveRow.appendChild(saveBtn);
+    section.appendChild(saveRow);
+    $content.appendChild(section);
+  }
+  function renderFieldsFor(nodeType, section, cfg) {
+    switch (nodeType) {
+      case "agent":
+        appendSelect(section, "harness", "Harness", HARNESS_OPTIONS, cfg.harness || "claude");
+        appendInput(section, "model", "Model", cfg.model || "", "Leave empty for harness default");
+        appendTextarea(section, "system_prompt", "System Prompt", cfg.system_prompt || "", "Instructions for this agent...");
+        appendToggle(section, "run_on_startup", "Start with project", !!cfg.run_on_startup);
+        appendToggle(section, "ephemeral_context", "Clear context after each turn", !!cfg.ephemeral_context);
+        break;
+      case "ctx":
+        appendTextarea(section, "markdown", "Content (Markdown)", cfg.markdown || "", "Context content...");
+        break;
+      case "table":
+        renderTableFields(section, cfg);
+        break;
+      case "endpoint":
+        appendSelect(section, "method", "Method", optionsFrom(HTTP_METHODS), (cfg.method || "POST").toUpperCase());
+        appendInput(section, "path", "Path", cfg.path || "/", "/path");
+        appendSelect(section, "response_mode", "Response Mode", optionsFrom(RESPONSE_MODES), cfg.response_mode || "ack");
+        break;
+      case "script":
+        appendSelect(section, "language", "Language", optionsFrom(SCRIPT_LANGUAGES), cfg.language || "ts");
+        appendTextarea(section, "source", "Source", typeof cfg.source === "string" ? cfg.source : "", "Script source code...");
+        break;
+      case "mcp":
+        renderMcpFields(section, cfg);
+        break;
+      case "vault":
+        renderVaultFields(section, cfg);
+        break;
+      case "chest":
+        break;
+      case "tool":
+        renderToolFields(section, cfg);
+        break;
+    }
+  }
+  function renderTableFields(section, cfg) {
+    const columns = cfg.columns || [];
+    const container = document.createElement("div");
+    section.appendChild(createFieldLabel(`Columns (${columns.length})`));
+    container.id = "table-columns";
+    container.className = "columns-list";
+    columns.forEach((column, index) => appendColumnRow(container, column, index));
+    section.appendChild(container);
+    section.appendChild(createSmallButton("+ Column", "btn-sm", () => {
+      appendColumnRow(container, { name: "", type: "text" }, container.children.length);
+    }));
+  }
+  function appendColumnRow(container, column, index) {
+    const row = document.createElement("div");
+    const nameInput = document.createElement("input");
+    const typeSelect = document.createElement("select");
+    row.className = "column-row";
+    nameInput.className = "field-input";
+    nameInput.value = column.name || "";
+    nameInput.placeholder = "column name";
+    nameInput.dataset.colIndex = String(index);
+    nameInput.dataset.colField = "name";
+    row.appendChild(nameInput);
+    typeSelect.className = "field-select";
+    typeSelect.dataset.colIndex = String(index);
+    typeSelect.dataset.colField = "type";
+    for (const columnType of COLUMN_TYPES) {
+      typeSelect.appendChild(createOption({ value: columnType, label: columnType }, column.type || "text"));
+    }
+    row.appendChild(typeSelect);
+    row.appendChild(createSmallButton("\xD7", "btn-sm danger", () => row.remove()));
+    container.appendChild(row);
+  }
+  function renderMcpFields(section, cfg) {
+    const transport = cfg.transport || "stdio";
+    appendSelect(section, "transport", "Transport", optionsFrom(MCP_TRANSPORTS), transport);
+    if (transport === "stdio") {
+      appendInput(section, "command", "Command", cfg.command || "", "e.g. npx -y @modelcontextprotocol/server");
+    } else {
+      appendInput(section, "url", "URL", cfg.url || "", "https://...");
+    }
+  }
+  function renderVaultFields(section, cfg) {
+    const keys = cfg.keys || [];
+    const container = document.createElement("div");
+    section.appendChild(createFieldLabel(`Secret Keys (${keys.length})`));
+    container.id = "vault-keys";
+    for (const key of keys) appendVaultKeyRow(container, key);
+    section.appendChild(container);
+    section.appendChild(createSmallButton("+ Key", "btn-sm", () => appendVaultKeyRow(container, "")));
+  }
+  function appendVaultKeyRow(container, key) {
+    const row = document.createElement("div");
+    const input = document.createElement("input");
+    row.className = "column-row";
+    input.className = "field-input vault-key-input";
+    input.value = key;
+    input.placeholder = "KEY_NAME";
+    row.appendChild(input);
+    row.appendChild(createSmallButton("\xD7", "btn-sm danger", () => row.remove()));
+    container.appendChild(row);
+  }
+  function renderToolFields(section, cfg) {
+    section.appendChild(createFieldLabel("Tool nodes are configured via import. Use the Wheel API tool handler."));
+    if (cfg.base_url) {
+      appendInput(section, "base_url", "Base URL", cfg.base_url, "");
+    }
+  }
+  function appendInput(parent, id, label, value, placeholder) {
+    const group = createFieldGroup(label);
+    const input = document.createElement("input");
+    input.className = "field-input";
+    input.id = `field-${id}`;
+    input.type = "text";
+    input.value = value;
+    if (placeholder) input.placeholder = placeholder;
+    group.appendChild(input);
+    parent.appendChild(group);
+  }
+  function appendTextarea(parent, id, label, value, placeholder) {
+    const group = createFieldGroup(label);
+    const textarea = document.createElement("textarea");
+    textarea.className = "field-textarea";
+    textarea.id = `field-${id}`;
+    textarea.value = value;
+    textarea.rows = 4;
+    if (placeholder) textarea.placeholder = placeholder;
+    group.appendChild(textarea);
+    parent.appendChild(group);
+  }
+  function appendSelect(parent, id, label, options, selected) {
+    const group = createFieldGroup(label);
+    const select = document.createElement("select");
+    select.className = "field-select";
+    select.id = `field-${id}`;
+    for (const option of options) select.appendChild(createOption(option, selected));
+    group.appendChild(select);
+    parent.appendChild(group);
+  }
+  function appendToggle(parent, id, label, checked) {
+    const row = document.createElement("div");
+    const toggle = document.createElement("label");
+    const input = document.createElement("input");
+    const slider = document.createElement("span");
+    const text = document.createElement("span");
+    row.className = "toggle-row";
+    toggle.className = "toggle-switch";
+    input.type = "checkbox";
+    input.id = `field-${id}`;
+    input.checked = checked;
+    slider.className = "toggle-slider";
+    text.className = "toggle-label";
+    text.textContent = label;
+    toggle.appendChild(input);
+    toggle.appendChild(slider);
+    row.appendChild(toggle);
+    row.appendChild(text);
+    parent.appendChild(row);
+  }
+  function createFieldGroup(label) {
+    const group = document.createElement("div");
+    group.className = "field-group";
+    group.appendChild(createFieldLabel(label));
+    return group;
+  }
+  function createFieldLabel(text) {
+    const label = document.createElement("div");
+    label.className = "field-label";
+    label.textContent = text;
+    return label;
+  }
+  function createOption(option, selected) {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    if (option.value === selected) element.selected = true;
+    return element;
+  }
+  function createSmallButton(text, className, onClick) {
+    const button = document.createElement("button");
+    button.className = className;
+    button.textContent = text;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+  function optionsFrom(values) {
+    return values.map((value) => ({ value, label: value }));
+  }
+  async function saveConfig(entry) {
+    if (!inspectorApi || !boardState?.projectId) return;
+    const statusEl = document.getElementById("inspector-save-status");
+    const saveBtn = document.getElementById("inspector-save-btn");
+    if (saveBtn) saveBtn.disabled = true;
+    setSaveStatus(statusEl, "", "Saving...");
+    try {
+      const config = collectConfig(entry.nodeType);
+      await inspectorApi.patchNode(boardState.projectId, entry.nodeId, { config });
+      entry.nodeConfig = config;
+      updateBoardStateEntry(entry);
+      setSaveStatus(statusEl, "ok", "Saved");
+      setTimeout(() => {
+        if (statusEl) statusEl.textContent = "";
+      }, SAVED_STATUS_CLEAR_MS);
+    } catch (err) {
+      setSaveStatus(statusEl, "err", errorMessage(err));
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+  function collectConfig(nodeType) {
+    switch (nodeType) {
+      case "agent":
+        return {
+          harness: fieldValue("harness") || "claude",
+          system_prompt: fieldValue("system_prompt"),
+          model: fieldValue("model") || void 0,
+          run_on_startup: fieldChecked("run_on_startup"),
+          ephemeral_context: fieldChecked("ephemeral_context")
+        };
+      case "ctx":
+        return { markdown: fieldValue("markdown") };
+      case "table":
+        return { columns: collectTableColumns() };
+      case "endpoint":
+        return {
+          method: fieldValue("method") || "POST",
+          path: fieldValue("path") || "/",
+          response_mode: fieldValue("response_mode") || "ack"
+        };
+      case "script":
+        return {
+          language: fieldValue("language") || "ts",
+          source: fieldValue("source") || "// empty"
+        };
+      case "mcp":
+        return fieldValue("transport") === "http" ? { transport: "http", url: fieldValue("url") || "https://example.com" } : { transport: "stdio", command: fieldValue("command") || "echo" };
+      case "vault":
+        return { keys: collectVaultKeys() };
+      case "chest":
+        return {};
+      case "tool":
+        return void 0;
+    }
+  }
+  function fieldValue(id) {
+    return document.getElementById(`field-${id}`)?.value || "";
+  }
+  function fieldChecked(id) {
+    return document.getElementById(`field-${id}`)?.checked || false;
+  }
+  function collectTableColumns() {
+    const container = document.getElementById("table-columns");
+    const columns = [];
+    if (!container) return columns;
+    for (const row of Array.from(container.children)) {
+      const nameInput = row.querySelector("input");
+      const typeSelect = row.querySelector("select");
+      if (nameInput?.value) {
+        columns.push({ name: nameInput.value, type: typeSelect?.value || "text" });
+      }
+    }
+    return columns;
+  }
+  function collectVaultKeys() {
+    const container = document.getElementById("vault-keys");
+    const keys = [];
+    if (!container) return keys;
+    for (const row of Array.from(container.children)) {
+      const input = row.querySelector(".vault-key-input");
+      if (input?.value) keys.push(input.value);
+    }
+    return keys;
+  }
+  async function updateBoardStateEntry(entry) {
+    try {
+      await reloadBoardState();
+      if (!boardState) return;
+      for (const candidate of Object.values(boardState.paneToNode)) {
+        if (candidate.nodeId === entry.nodeId) {
+          candidate.nodeConfig = entry.nodeConfig;
+        }
+      }
+      await writeBoardState(panel.secrets, boardState);
+    } catch {
+      return;
+    }
+  }
+  function renderWiresSection(entry, paneId) {
+    const section = document.createElement("div");
+    const title = createFieldLabel("Wires");
+    const wireList = document.createElement("div");
+    section.className = "section";
+    section.id = "wires-section";
+    title.style.marginBottom = "4px";
+    section.appendChild(title);
+    wireList.id = "wire-list";
+    const wires = entry.wires || [];
+    if (wires.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "wire-empty";
+      empty.textContent = "No wires.";
+      wireList.appendChild(empty);
+    }
+    for (const wire of wires) {
+      wireList.appendChild(createWireRow(entry, wire));
+    }
+    section.appendChild(wireList);
+    const validTargets = wheelTargetTypes(entry.nodeType);
+    const peers = Object.values(boardState?.paneToNode || {}).filter((e) => e.nodeId !== entry.nodeId && validTargets.has(e.nodeType));
+    if (peers.length === 0) {
+      if (validTargets.size === 0) {
+        const hint = document.createElement("div");
+        hint.className = "wire-empty";
+        hint.textContent = `${entry.nodeType} nodes have no outgoing wires.`;
+        section.appendChild(hint);
+      }
+      $content.appendChild(section);
+      return;
+    }
+    section.appendChild(createAddWireRow(entry, paneId, peers));
+    $content.appendChild(section);
+  }
+  function createWireRow(entry, wire) {
+    const row = document.createElement("div");
+    const dir = document.createElement("span");
+    const wireType = document.createElement("span");
+    const peer = document.createElement("span");
+    const removeBtn = createSmallButton("\xD7", "btn-sm danger wire-remove", () => removeWire(entry, wire, row));
+    const isOutgoing = wire.direction === "outgoing";
+    row.className = "wire-item";
+    dir.className = "wire-dir";
+    dir.textContent = isOutgoing ? "\u2192 " : "\u2190 ";
+    wireType.className = `wire-type wire-type-${wire.type}`;
+    wireType.textContent = wire.type;
+    peer.className = "wire-peer";
+    peer.textContent = ` ${isOutgoing ? "to" : "from"} ${wire.peerName}`;
+    row.appendChild(dir);
+    row.appendChild(wireType);
+    row.appendChild(peer);
+    row.appendChild(removeBtn);
+    return row;
+  }
+  function createAddWireRow(entry, paneId, peers) {
+    const addRow = document.createElement("div");
+    const peerSelect = document.createElement("select");
+    const typeSelect = document.createElement("select");
+    const refreshTypeOptions = () => fillWireTypeOptions(typeSelect, entry.nodeType, peerSelect.selectedOptions[0]?.dataset.nodeType);
+    addRow.className = "wire-add-row";
+    peerSelect.className = "field-select wire-peer-select";
+    peerSelect.id = "wire-peer-select";
+    peerSelect.appendChild(createOption({ value: "", label: "Target node..." }, ""));
+    for (const peer of peers) {
+      const option = createOption({ value: peer.nodeId, label: `${peer.nodeName} (${peer.nodeType})` }, "");
+      option.dataset.nodeType = peer.nodeType;
+      peerSelect.appendChild(option);
+    }
+    typeSelect.className = "field-select wire-type-select";
+    typeSelect.id = "wire-type-select";
+    peerSelect.addEventListener("change", refreshTypeOptions);
+    refreshTypeOptions();
+    addRow.appendChild(peerSelect);
+    addRow.appendChild(typeSelect);
+    addRow.appendChild(createSmallButton("+ Wire", "btn-sm primary", () => addWire(entry, paneId)));
+    return addRow;
+  }
+  function fillWireTypeOptions(typeSelect, fromType, targetType) {
+    typeSelect.textContent = "";
+    if (!targetType) {
+      typeSelect.appendChild(createOption({ value: "", label: "type..." }, ""));
+      return;
+    }
+    for (const wireType of wheelWireTypes(fromType, targetType)) {
+      typeSelect.appendChild(createOption({ value: wireType, label: wireType }, ""));
+    }
+  }
+  async function addWire(entry, paneId) {
+    if (!inspectorApi || !boardState?.projectId) return;
+    const peerNodeId = document.getElementById("wire-peer-select")?.value;
+    const wireType = document.getElementById("wire-type-select")?.value;
+    if (!peerNodeId || !wireType) return;
+    try {
+      await inspectorApi.createWire(boardState.projectId, entry.nodeId, peerNodeId, wireType);
+      await reloadBoardState();
+      await syncAllWireConnections();
+      const stillOnBoard = Object.values(boardState?.paneToNode || {}).some((e) => e.nodeId === entry.nodeId);
+      if (stillOnBoard) {
+        await refreshEntryWires(entry);
+        showNode({ ...entry, wires: entry.wires }, paneId);
+      }
+    } catch (err) {
+      setSaveStatus(document.getElementById("inspector-save-status"), "err", errorMessage(err));
+    }
+  }
+  async function removeWire(entry, wire, row) {
+    if (!inspectorApi || !boardState?.projectId) return;
+    const peerNodeId = findNodeIdByName(wire.peerName);
+    if (!peerNodeId) return;
+    const isOutgoing = wire.direction === "outgoing";
+    const fromId = isOutgoing ? entry.nodeId : peerNodeId;
+    const toId = isOutgoing ? peerNodeId : entry.nodeId;
+    try {
+      await inspectorApi.deleteWire(boardState.projectId, fromId, toId, wire.type);
+      row.remove();
+      await reloadBoardState();
+      await syncAllWireConnections();
+    } catch (err) {
+      setSaveStatus(document.getElementById("inspector-save-status"), "err", errorMessage(err));
+    }
+  }
+  function findNodeIdByName(name) {
+    return Object.values(boardState?.paneToNode || {}).find((e) => e.nodeName === name)?.nodeId ?? null;
+  }
+  async function refreshEntryWires(entry) {
+    if (!inspectorApi || !boardState?.projectId) return;
+    try {
+      const apiBoard = await inspectorApi.getBoard(boardState.projectId);
+      entry.wires = summarizeWires(entry.nodeId, apiBoard.wires || [], indexNodes(apiBoard.nodes || []));
+    } catch {
+      return;
+    }
+  }
+  async function syncAllWireConnections() {
+    if (!inspectorApi || !boardState?.projectId) return;
+    try {
+      const apiBoard = await inspectorApi.getBoard(boardState.projectId);
+      await associatePanesByWires(panel.canvas, boardState.paneToNode, apiBoard.wires || []);
+    } catch {
+      return;
+    }
+  }
+  function renderAgentLog(entry) {
+    const section = document.createElement("div");
+    const logContainer = document.createElement("div");
+    section.className = "section";
+    section.appendChild(createFieldLabel("Agent Log"));
+    logContainer.id = "agent-log";
+    logContainer.className = "agent-log";
+    section.appendChild(logContainer);
+    $content.appendChild(section);
+    startLogPolling(entry.nodeId);
+  }
+  function startLogPolling(nodeId) {
+    stopLogPolling();
+    if (!inspectorApi || !boardState?.projectId) return;
+    logCursor = 0;
+    fetchAgentLog(nodeId);
+    logPollTimer = setInterval(() => fetchAgentLog(nodeId), LOG_POLL_MS);
+  }
+  function stopLogPolling() {
+    if (!logPollTimer) return;
+    clearInterval(logPollTimer);
+    logPollTimer = null;
+  }
+  async function fetchAgentLog(nodeId) {
+    if (!inspectorApi || !boardState?.projectId) return;
+    try {
+      const log = await inspectorApi.agentLog(boardState.projectId, nodeId, { since: logCursor });
+      const entries = Array.isArray(log) ? log : log.entries || [];
+      const newest = entries[entries.length - 1];
+      if (!newest) return;
+      logCursor = newest.seq || newest.id || logCursor;
+      const logContainer = document.getElementById("agent-log");
+      if (!logContainer) return;
+      for (const logEntry of entries) {
+        const line = document.createElement("div");
+        const text = logEntry.text || logEntry.line || logEntry.body || JSON.stringify(logEntry);
+        line.className = "log-line";
+        if ((logEntry.stream || "stdout") === "stderr") line.classList.add("log-stderr");
+        line.textContent = text.length > MAX_LOG_LINE_CHARS ? text.slice(0, MAX_LOG_LINE_CHARS) + "..." : text;
+        logContainer.appendChild(line);
+      }
+      while (logContainer.children.length > MAX_LOG_LINES && logContainer.firstChild) {
+        logContainer.removeChild(logContainer.firstChild);
+      }
+      logContainer.scrollTop = logContainer.scrollHeight;
+    } catch {
+      return;
+    }
+  }
+  async function reloadBoardState() {
+    try {
+      const latest = await readBoardState(panel.secrets);
+      if (latest) boardState = latest;
+    } catch {
+      return;
+    }
+  }
+})();

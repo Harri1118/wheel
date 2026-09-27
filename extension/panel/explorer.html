@@ -87,6 +87,70 @@
     }
     .node-delete-btn:hover { color: #c66; }
 
+    .btn-builder {
+      background: #2a2a3a;
+      border: 1px solid #3a3a4a;
+      border-radius: 4px;
+      padding: 4px 10px;
+      color: #aac;
+      font-size: 11px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 6px;
+    }
+    .btn-builder:hover { background: #3a3a4a; color: #ccf; }
+    .btn-builder:disabled { opacity: 0.5; cursor: default; }
+
+    .builder-inline {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .builder-inline textarea {
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: #ddd;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+      min-height: 60px;
+      width: 100%;
+    }
+    .builder-inline textarea:focus { border-color: #555; }
+    .builder-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .builder-actions button {
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      padding: 4px 12px;
+      color: #aaa;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .builder-actions button:hover { background: #333; color: #ddd; }
+    .builder-actions .btn-go { background: #2a3a2a; border-color: #3a4a3a; color: #8b8; }
+    .builder-actions .btn-go:hover { background: #3a4a3a; }
+    .builder-actions .btn-go:disabled { opacity: 0.5; cursor: default; }
+
+    .builder-status {
+      font-size: 11px;
+      color: #888;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .builder-status.streaming { color: #8af; }
+    .builder-status.done { color: #5a5; }
+    .builder-status.err { color: #c66; }
+
   </style>
 </head>
 <body>
@@ -123,11 +187,19 @@
         </div>
         <p id="sync-detail" class="dim"></p>
         <ul id="node-list"></ul>
+        <button class="btn-builder" id="btn-builder">Improve with the builder</button>
+        <div id="builder-inline" class="builder-inline" hidden>
+          <textarea id="builder-prompt" placeholder="Describe what you want to improve..."></textarea>
+          <div id="builder-status" class="builder-status" hidden></div>
+          <div class="builder-actions">
+            <button id="builder-cancel">Cancel</button>
+            <button id="builder-go" class="btn-go">Run</button>
+          </div>
+        </div>
       </div>
 
     </div>
   </div>
-  <script src="wheel-api.js"></script>
   <script src="explorer.js"></script>
 </body>
 </html>

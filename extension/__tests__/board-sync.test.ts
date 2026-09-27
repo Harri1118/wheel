@@ -1,15 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// board-sync.js relies on spawn-plan.js globals (wheelToCanvas, buildAgentPrompt, buildNoteBody)
-// being loaded first via <script> order in the browser. Populate them here.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const spawnPlan = require('../panel/spawn-plan.js')
-;(globalThis as Record<string, unknown>).wheelToCanvas = spawnPlan.wheelToCanvas
-;(globalThis as Record<string, unknown>).buildAgentPrompt = spawnPlan.buildAgentPrompt
-;(globalThis as Record<string, unknown>).buildNoteBody = spawnPlan.buildNoteBody
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { BoardSync, canvasToWheel } = require('../panel/board-sync.js')
+import { BoardSync, canvasToWheel } from '../src/board-sync'
+import type { BoardSyncHost } from '../src/board-sync'
 
 let sendRequest: ReturnType<typeof vi.fn>
 
@@ -19,8 +11,20 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks())
 
-function makeBoardSync() {
-  return new BoardSync(sendRequest)
+function makeBoardSync(): any {
+  const host = {
+    canvas: {
+      spawn: (options: unknown) => sendRequest('canvas.spawnPane', options),
+      kill: (paneId: string) => sendRequest('canvas.killPane', { paneId }),
+      move: (moves: unknown) => sendRequest('canvas.movePanes', { moves }),
+    },
+    state: {
+      persist: (data: unknown) => { sendRequest('pane.persistState', { data }) },
+      load: async () => (await sendRequest('pane.loadState'))?.data ?? null,
+    },
+  }
+
+  return new BoardSync(host as unknown as BoardSyncHost)
 }
 
 function makeBoard(nodes: unknown[] = [], wires: unknown[] = []) {
