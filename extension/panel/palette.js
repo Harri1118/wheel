@@ -494,9 +494,41 @@
       labelSpan.textContent = item.label;
       btn.appendChild(createIcon(item.svg));
       btn.appendChild(labelSpan);
-      btn.addEventListener("click", () => spawnNode(item.type, item.label));
+      btn.addEventListener("mousedown", (e) => handlePaletteMouseDown(e, item));
       $list.appendChild(btn);
     }
+  }
+  var DRAG_THRESHOLD_PX = 4;
+  function handlePaletteMouseDown(e, item) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragStarted = false;
+    function onMove(ev) {
+      if (dragStarted) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      dragStarted = true;
+      document.body.style.cursor = "grabbing";
+      panel.rpc.request("canvas.startNodeDrag", {
+        extensionId: WHEEL_EXTENSION_ID,
+        surfaceId: surfaceIdFor(item.type),
+        kind: "note",
+        title: item.label
+      });
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      if (!dragStarted) {
+        spawnNode(item.type, item.label);
+      }
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }
   async function spawnNode(type, defaultLabel) {
     const board = await readBoardState(panel.secrets).catch(() => null);

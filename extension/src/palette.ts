@@ -64,9 +64,53 @@ function buildPalette(): void {
 
     btn.appendChild(createIcon(item.svg))
     btn.appendChild(labelSpan)
-    btn.addEventListener('click', () => spawnNode(item.type, item.label))
+    btn.addEventListener('mousedown', (e) => handlePaletteMouseDown(e, item))
     $list.appendChild(btn)
   }
+}
+
+const DRAG_THRESHOLD_PX = 4
+
+function handlePaletteMouseDown(e: MouseEvent, item: PaletteItem): void {
+  if (e.button !== 0) return
+
+  e.preventDefault()
+
+  const startX = e.clientX
+  const startY = e.clientY
+  let dragStarted = false
+
+  function onMove(ev: MouseEvent): void {
+    if (dragStarted) return
+
+    const dx = ev.clientX - startX
+    const dy = ev.clientY - startY
+
+    if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return
+
+    dragStarted = true
+    document.body.style.cursor = 'grabbing'
+
+    panel.rpc.request('canvas.startNodeDrag', {
+      extensionId: WHEEL_EXTENSION_ID,
+      surfaceId: surfaceIdFor(item.type),
+      kind: 'note',
+      title: item.label,
+    })
+  }
+
+  function onUp(): void {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+
+    if (!dragStarted) {
+      spawnNode(item.type, item.label)
+    }
+  }
+
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
 }
 
 async function spawnNode(type: NodeType, defaultLabel: string): Promise<void> {
